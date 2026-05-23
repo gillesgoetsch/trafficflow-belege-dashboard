@@ -63,7 +63,7 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
               <div className="min-w-0">
                 <DialogTitle className="truncate">{data.filename}</DialogTitle>
                 <DialogDescription className="text-xs">
-                  Received {fmtDateTime(data.received_at)} · Document date {fmtDate(data.document_date)}
+                  Received {fmtDateTime(data.received_at)} · Issued {fmtDate(data.document_date)}{data.due_date ? ` · Due ${fmtDate(data.due_date)}` : ""}
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -122,8 +122,21 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                   <Field label="Currency">
                     <Input value={edit.currency ?? data.currency ?? ""} onChange={(e) => setEdit((s: any) => ({ ...s, currency: e.target.value.toUpperCase() }))} />
                   </Field>
-                  <Field label="Document date">
-                    <Input type="date" value={(edit.document_date ?? data.document_date ?? "").slice(0, 10)} onChange={(e) => setEdit((s: any) => ({ ...s, document_date: e.target.value }))} />
+                  <Field label="Date of issue">
+                    <Input
+                      type="date"
+                      value={(edit.document_date ?? data.document_date ?? "").slice(0, 10)}
+                      onChange={(e) => setEdit((s: any) => ({ ...s, document_date: e.target.value }))}
+                      title="Rechnungsdatum — when the invoice was issued. Drives accounting periods."
+                    />
+                  </Field>
+                  <Field label="Due date">
+                    <Input
+                      type="date"
+                      value={(edit.due_date ?? data.due_date ?? "").slice(0, 10)}
+                      onChange={(e) => setEdit((s: any) => ({ ...s, due_date: e.target.value }))}
+                      title="Fälligkeitsdatum — when payment is due. Often empty for already-paid CC charges."
+                    />
                   </Field>
                   <Field label="Invoice #">
                     <Input value={edit.invoice_number ?? data.invoice_number ?? ""} onChange={(e) => setEdit((s: any) => ({ ...s, invoice_number: e.target.value }))} />

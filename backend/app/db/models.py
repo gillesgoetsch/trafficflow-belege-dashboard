@@ -277,7 +277,9 @@ class Receipt(Base, TimestampMixin):
     client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"))
 
     # Metadata
+    # document_date == date of issue (Rechnungsdatum) — the canonical date for table views.
     document_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     amount: Mapped[float | None] = mapped_column(Numeric(14, 2))
     currency: Mapped[str | None] = mapped_column(String(8))

@@ -471,6 +471,11 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
                     r.document_date = _dp.parse(ext.document_date)
                 except Exception:
                     pass
+            if ext.due_date:
+                try:
+                    r.due_date = _dp.parse(ext.due_date)
+                except Exception:
+                    pass
             if ext.total_amount is not None:
                 r.amount = ext.total_amount
             if ext.currency:

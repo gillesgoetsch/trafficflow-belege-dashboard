@@ -302,7 +302,7 @@ export default function Inbox() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-8"></TableHead>
-              <TableHead>Date</TableHead>
+              <TableHead title="Date of issue (Rechnungsdatum)">Issue date</TableHead>
               <TableHead>Provider</TableHead>
               <TableHead>Brand</TableHead>
               <TableHead>Filename</TableHead>

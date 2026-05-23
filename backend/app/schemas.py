@@ -206,7 +206,8 @@ class ReceiptOut(_ORM):
     mailbox_id: int | None
     provider_id: int | None
     client_id: int | None
-    document_date: datetime | None
+    document_date: datetime | None         # date of issue (Rechnungsdatum)
+    due_date: datetime | None = None        # payment due (Fälligkeitsdatum)
     received_at: datetime | None
     amount: Decimal | None
     currency: str | None
@@ -238,6 +239,7 @@ class ReceiptPatch(BaseModel):
     provider_id: int | None = None
     client_id: int | None = None
     document_date: datetime | None = None
+    due_date: datetime | None = None
     amount: Decimal | None = None
     currency: str | None = None
     invoice_number: str | None = None

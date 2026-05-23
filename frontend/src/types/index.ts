@@ -114,7 +114,8 @@ export interface Receipt {
   mailbox_id: number | null;
   provider_id: number | null;
   client_id: number | null;
-  document_date: string | null;
+  document_date: string | null;   // date of issue (Rechnungsdatum)
+  due_date: string | null;        // payment due (Fälligkeitsdatum)
   received_at: string | null;
   amount: string | null;
   currency: string | null;

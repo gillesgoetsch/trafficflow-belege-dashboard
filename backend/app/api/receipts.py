@@ -444,7 +444,7 @@ async def export_csv(
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
     w.writerow([
-        "ID", "Date", "Organization", "Provider", "Brand", "Client",
+        "ID", "Date of issue", "Due date", "Organization", "Provider", "Brand", "Client",
         "Amount", "Currency", "VAT rate", "VAT amount",
         "Payment method", "Invoice number", "Filename",
         "Status", "Booked", "Booked at", "Bookkeeping ref", "Notes",
@@ -453,6 +453,7 @@ async def export_csv(
         w.writerow([
             r.id,
             (r.document_date.date().isoformat() if r.document_date else ""),
+            (r.due_date.date().isoformat() if r.due_date else ""),
             orgs.get(r.organization_id, ""),
             (r.provider.display_name if r.provider else ""),
             r.brand or "",
