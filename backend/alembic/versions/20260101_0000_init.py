@@ -39,14 +39,26 @@ def upgrade() -> None:
         name="email_msg_status", create_type=False,
     )
 
-    # Now actually create them (idempotent thanks to checkfirst=True).
-
-    bind = op.get_bind()
-    for enum in (
-        match_type_enum, classification_layer_enum, connector_type_enum,
-        receipt_status_enum, sync_status_enum, email_msg_status_enum,
-    ):
-        enum.create(bind, checkfirst=True)
+    # Create enums idempotently via raw SQL — SQLAlchemy's checkfirst doesn't
+    # work reliably over asyncpg-wrapped connections.
+    _enum_defs = [
+        ("match_type", ["sender_domain", "sender_email", "subject_contains",
+                        "body_contains", "plus_alias", "sender_contains"]),
+        ("classification_layer", ["1", "2", "3", "manual"]),
+        ("connector_type", ["local", "onedrive", "bexio"]),
+        ("receipt_status", ["processing", "processed", "review_needed", "archived", "failed"]),
+        ("sync_status", ["pending", "synced", "failed", "skipped"]),
+        ("email_msg_status", ["pending", "classified", "rendered", "finished",
+                              "review_needed", "failed", "not_a_receipt"]),
+    ]
+    for name, values in _enum_defs:
+        vals = ", ".join(f"'{v}'" for v in values)
+        op.execute(
+            f"DO $$ BEGIN "
+            f"CREATE TYPE {name} AS ENUM ({vals}); "
+            f"EXCEPTION WHEN duplicate_object THEN null; "
+            f"END $$;"
+        )
 
     # users
     op.create_table(
