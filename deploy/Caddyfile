@@ -1,0 +1,64 @@
+# =============================================================================
+# Belege-Hub — Caddy reverse proxy config
+#
+# Routes:
+#   /api/*        → api:8000     (FastAPI)
+#   /_deploy*     → webhook:9000 (GitHub auto-deploy receiver)
+#   everything else → web:80     (static React build)
+#
+# TLS: automatic via Let's Encrypt for {$DOMAIN}, http→https redirect.
+# =============================================================================
+
+{
+	email {$ACME_EMAIL}
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+{$DOMAIN} {
+	encode gzip zstd
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+	}
+
+	# Block dotfiles
+	@dotfiles path /.*
+	respond @dotfiles 404
+
+	# API
+	handle /api/* {
+		reverse_proxy api:8000 {
+			header_up Host {host}
+			header_up X-Real-IP {remote}
+			header_up X-Forwarded-For {remote}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# GitHub deploy webhook + manual trigger
+	handle /_deploy* {
+		reverse_proxy webhook:9000
+	}
+
+	# Frontend SPA (Caddy in the `web` container serves the build)
+	handle {
+		reverse_proxy web:80
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Plain HTTP — redirect everything to HTTPS.
+http://{$DOMAIN} {
+	redir https://{host}{uri} permanent
+}

@@ -1,0 +1,152 @@
+# =============================================================================
+# Belege-Hub - Production docker-compose
+# Single-host deployment for VPS (~4c / 8GB).
+#
+# Services:
+#   db      - PostgreSQL 16
+#   redis   - Redis 7 (ARQ broker)
+#   api     - FastAPI app (uvicorn)
+#   worker  - ARQ worker (IMAP polling, classification, PDF render, OCR, syncs)
+#   web     - Static React build served by Caddy
+#   caddy   - Reverse proxy + automatic HTTPS via Let's Encrypt
+#   webhook - GitHub auto-deploy receiver
+#   backup  - Daily DB + files backup to S3 (optional, only runs if configured)
+# =============================================================================
+
+x-env: &default-env
+  env_file: .env
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [internal]
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *default-env
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    volumes:
+      - receipts-data:/data/receipts
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.seeds &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/api/health'); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks: [internal]
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *default-env
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    volumes:
+      - receipts-data:/data/receipts
+    command: ["arq", "app.workers.tasks.WorkerSettings"]
+    networks: [internal]
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+      - web
+      - webhook
+    networks: [internal]
+
+  webhook:
+    build:
+      context: ./deploy/webhook
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *default-env
+    volumes:
+      # Repo checkout location on host - the webhook runs git pull + docker compose build here
+      - ${DEPLOY_REPO_PATH:-/srv/belege}:/repo
+      # Allow webhook to run docker on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [internal]
+
+  backup:
+    image: alpine:3.20
+    restart: unless-stopped
+    <<: *default-env
+    depends_on:
+      db: {condition: service_healthy}
+    volumes:
+      - receipts-data:/data/receipts:ro
+      - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "apk add --no-cache postgresql-client aws-cli tzdata bash >/dev/null &&
+       echo '0 3 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
+       crond -f -L /dev/stdout"
+    networks: [internal]
+
+volumes:
+  db-data:
+  redis-data:
+  receipts-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  internal:
+    driver: bridge
