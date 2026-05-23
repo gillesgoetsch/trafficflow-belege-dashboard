@@ -41,6 +41,7 @@ dependencies = [
   "tenacity>=9.0.0",
   "email-validator>=2.2.0",
   "rich>=13.9.4",
+  "llama-cpp-python>=0.3.2",
 ]
 
 [project.optional-dependencies]

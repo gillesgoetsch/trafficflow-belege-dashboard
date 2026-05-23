@@ -10,10 +10,12 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
-# System deps: Playwright Chromium runtime + libpq + build tooling for psycopg
+# System deps: Playwright Chromium runtime + libpq + build tooling (incl. cmake
+# for llama-cpp-python which builds from source on ARM)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg git \
-    libpq5 libpq-dev gcc \
+    libpq5 libpq-dev gcc g++ cmake \
+    libopenblas-dev libomp-dev \
     fonts-noto fonts-noto-cjk fonts-noto-color-emoji \
     libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
@@ -23,6 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY pyproject.toml ./
+# Build llama.cpp with OpenBLAS for ARM CPU acceleration
+ENV CMAKE_ARGS="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS"
 RUN pip install --upgrade pip && pip install -e . && \
     playwright install --with-deps chromium
 

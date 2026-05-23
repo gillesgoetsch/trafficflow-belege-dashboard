@@ -9,7 +9,7 @@ import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { RefreshCw, Save, BookCheck, BookX, Download, Loader2 } from "lucide-react";
+import { RefreshCw, Save, BookCheck, BookX, Download, Loader2, Cloud, Cpu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "../ui/toaster";
 import { Textarea } from "../ui/textarea";
@@ -41,21 +41,56 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
     onError: (e: any) => toast({ title: "Speichern fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
 
-  const reprocess = useMutation({
-    mutationFn: () => api(`/receipts/${id}/reprocess`, { method: "POST" }),
-    onSuccess: async () => {
-      toast({ title: "Neuverarbeitung läuft…", description: "KI-Extraktion startet, Daten werden in wenigen Sekunden aktualisiert." });
-      // Poll the receipt a couple of times so the panel shows fresh values
-      // once the worker finishes (usually 3-8s for an upload).
-      for (let i = 0; i < 8; i++) {
-        await new Promise((r) => setTimeout(r, 2500));
-        await qc.invalidateQueries({ queryKey: ["receipt", id] });
+  // Polling helper: after enqueueing, watch the receipt's processing_log
+  // for a new entry whose timestamp is later than when we triggered. As soon
+  // as that appears the worker has run, so we invalidate and clear local edits.
+  async function pollUntilUpdated(startedAtIso: string, maxSeconds = 90) {
+    const deadline = Date.now() + maxSeconds * 1000;
+    while (Date.now() < deadline) {
+      try {
+        const fresh: ReceiptDetail = await api(`/receipts/${id}`);
+        const logs = fresh.processing_log ?? [];
+        const last = logs[logs.length - 1] as any;
+        const lastTs = last?.ts as string | undefined;
+        if (lastTs && lastTs > startedAtIso) {
+          setEdit({});
+          qc.setQueryData(["receipt", id], fresh);
+          qc.invalidateQueries({ queryKey: ["receipts"] });
+          return true;
+        }
+      } catch {
+        // ignore transient errors
       }
-      qc.invalidateQueries({ queryKey: ["receipts"] });
-      toast({ title: "Neuverarbeitung abgeschlossen", variant: "success" });
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    qc.invalidateQueries({ queryKey: ["receipt", id] });
+    qc.invalidateQueries({ queryKey: ["receipts"] });
+    return false;
+  }
+
+  const reprocessApi = useMutation({
+    mutationFn: () => api(`/receipts/${id}/reprocess?engine=api`, { method: "POST" }),
+    onMutate: () => ({ startedAt: new Date().toISOString() }),
+    onSuccess: async (_data, _vars, ctx) => {
+      toast({ title: "Claude-Extraktion gestartet…", description: "Ca. 5–10 Sekunden." });
+      const ok = await pollUntilUpdated((ctx as any).startedAt, 60);
+      toast({ title: ok ? "Claude-Extraktion abgeschlossen" : "Aktualisierung wird im Hintergrund fortgesetzt", variant: ok ? "success" : "default" });
     },
-    onError: (e: any) => toast({ title: "Neuverarbeitung fehlgeschlagen", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Neuverarbeitung (API) fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
+
+  const reprocessLocal = useMutation({
+    mutationFn: () => api(`/receipts/${id}/reprocess?engine=local`, { method: "POST" }),
+    onMutate: () => ({ startedAt: new Date().toISOString() }),
+    onSuccess: async (_data, _vars, ctx) => {
+      toast({ title: "Lokale KI gestartet…", description: "Qwen-3B auf VPS — kann 20–40 Sekunden dauern." });
+      const ok = await pollUntilUpdated((ctx as any).startedAt, 180);
+      toast({ title: ok ? "Lokale Extraktion abgeschlossen" : "Aktualisierung wird im Hintergrund fortgesetzt", variant: ok ? "success" : "default" });
+    },
+    onError: (e: any) => toast({ title: "Neuverarbeitung (lokal) fehlgeschlagen", description: e.message, variant: "destructive" }),
+  });
+
+  const reprocessBusy = reprocessApi.isPending || reprocessLocal.isPending;
 
   const book = useMutation({
     mutationFn: () => api(`/receipts/${id}/book`, { method: "POST" }),
@@ -85,9 +120,13 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                 ) : (
                   <Button size="sm" onClick={() => book.mutate()}><BookCheck className="h-3.5 w-3.5 mr-1" /> Verbuchen</Button>
                 )}
-                <Button size="sm" variant="outline" onClick={() => reprocess.mutate()} disabled={reprocess.isPending} title="KI-Extraktion erneut ausführen (Claude liest das PDF neu)">
-                  {reprocess.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-                  {reprocess.isPending ? "KI läuft…" : "Neu verarbeiten"}
+                <Button size="sm" variant="outline" onClick={() => reprocessApi.mutate()} disabled={reprocessBusy} title="Claude API erneut aufrufen (~$0.005, ~5–10 s)">
+                  {reprocessApi.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Cloud className="h-3.5 w-3.5 mr-1" />}
+                  {reprocessApi.isPending ? "API läuft…" : "Neu verarbeiten API"}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => reprocessLocal.mutate()} disabled={reprocessBusy} title="Lokale KI auf dem VPS — kostenlos, 20–40 s">
+                  {reprocessLocal.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Cpu className="h-3.5 w-3.5 mr-1" />}
+                  {reprocessLocal.isPending ? "Lokal läuft…" : "Neu verarbeiten lokal"}
                 </Button>
                 <a href={`${apiBase}/receipts/${data.id}/file`} download={data.filename}>
                   <Button size="sm" variant="outline"><Download className="h-3.5 w-3.5 mr-1" /> Herunterladen</Button>

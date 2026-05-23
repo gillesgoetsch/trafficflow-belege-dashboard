@@ -10,7 +10,7 @@ import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye, Loader2 } from "lucide-react";
+import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye, Loader2, Cloud, Cpu } from "lucide-react";
 import { fmtDate, fmtMoney } from "../lib/format";
 import { ReceiptDetailPanel } from "../components/receipts/ReceiptDetailPanel";
 import { toast } from "../components/ui/toaster";
@@ -373,25 +373,8 @@ export default function Inbox() {
                     <Button size="icon" variant="ghost" className="h-7 w-7" title="Vorschau" onClick={() => { setFocusIndex(idx); setOpenId(r.id); }}>
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      title="KI-Extraktion neu ausführen"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        try {
-                          await api(`/receipts/${r.id}/reprocess`, { method: "POST" });
-                          toast({ title: "Neuverarbeitung läuft…" });
-                          setTimeout(() => qc.invalidateQueries({ queryKey: ["receipts"] }), 5000);
-                          setTimeout(() => qc.invalidateQueries({ queryKey: ["receipts"] }), 12000);
-                        } catch (err: any) {
-                          toast({ title: "Fehlgeschlagen", description: err.message, variant: "destructive" });
-                        }
-                      }}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    </Button>
+                    <RowReprocessButton receiptId={r.id} engine="api" />
+                    <RowReprocessButton receiptId={r.id} engine="local" />
                     <a href={`${apiBase}/receipts/${r.id}/file`} download={r.filename} title="Herunterladen">
                       <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="h-3.5 w-3.5" /></Button>
                     </a>
@@ -441,6 +424,48 @@ function LayerBadge({ layer }: { layer: Receipt["classification_layer"] }) {
   const label = { "1": "Regeln", "2": "KI", "3": "Prüfung", "manual": "Manuell" }[layer];
   return <Badge variant="outline">{label}</Badge>;
 }
+function RowReprocessButton({ receiptId, engine }: { receiptId: number; engine: "api" | "local" }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const label = engine === "api" ? "Claude API (~$0.005)" : "Lokale KI (kostenlos)";
+  const Icon = engine === "api" ? Cloud : Cpu;
+  const trigger = async (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const startedAt = new Date().toISOString();
+      await api(`/receipts/${receiptId}/reprocess?engine=${engine}`, { method: "POST" });
+      toast({ title: engine === "api" ? "Claude-Extraktion gestartet…" : "Lokale KI gestartet…" });
+      const deadline = Date.now() + (engine === "api" ? 60_000 : 180_000);
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        try {
+          const fresh: any = await api(`/receipts/${receiptId}`);
+          const logs = fresh.processing_log ?? [];
+          const last = logs[logs.length - 1];
+          if (last?.ts && last.ts > startedAt) {
+            qc.invalidateQueries({ queryKey: ["receipts"] });
+            qc.invalidateQueries({ queryKey: ["receipt", receiptId] });
+            toast({ title: engine === "api" ? "Claude-Extraktion abgeschlossen" : "Lokale Extraktion abgeschlossen", variant: "success" });
+            return;
+          }
+        } catch { /* ignore */ }
+      }
+      qc.invalidateQueries({ queryKey: ["receipts"] });
+    } catch (err: any) {
+      toast({ title: "Fehlgeschlagen", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button size="icon" variant="ghost" className="h-7 w-7" title={label} onClick={trigger} disabled={busy}>
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+    </Button>
+  );
+}
+
 function PaymentBadge({ pm }: { pm: PaymentMethod }) {
   const colorMap: Record<PaymentMethod, "default" | "secondary" | "outline"> = {
     credit_card: "default",

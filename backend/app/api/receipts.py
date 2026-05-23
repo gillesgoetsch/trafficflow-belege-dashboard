@@ -192,23 +192,32 @@ async def reprocess(
     receipt_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],
+    engine: str = "auto",
 ):
-    """Re-run extraction (Claude + local payment inference) on a single receipt.
+    """Re-run extraction on a single receipt.
 
-    Works for both email-sourced and uploaded receipts — picks the right
-    worker job based on whether email_message_id is set.
+    engine:
+      - "api"   : always use Claude (network call, ~$0.005)
+      - "local" : always use the local Qwen LLM (free, slower, less accurate)
+      - "auto"  : local first; fall back to Claude on low confidence
+
+    Works for both email-sourced and uploaded receipts.
     """
+    if engine not in ("api", "local", "auto"):
+        raise HTTPException(400, "engine must be one of: api, local, auto")
     r = await db.get(Receipt, receipt_id)
     if not r:
         raise HTTPException(404, "Not found")
     pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     if r.email_message_id:
+        # email pipeline always uses Claude (the receipt path here doesn't yet
+        # support local extraction for email-sourced bodies).
         await pool.enqueue_job("process_message", r.email_message_id, force=True)
         kind = "process_message"
     else:
-        await pool.enqueue_job("process_uploaded_receipt", r.id)
-        kind = "process_uploaded_receipt"
-    return {"ok": True, "kind": kind}
+        await pool.enqueue_job("process_uploaded_receipt", r.id, engine)
+        kind = f"process_uploaded_receipt({engine})"
+    return {"ok": True, "kind": kind, "engine": engine}
 
 
 @router.post("/{receipt_id}/resync")
@@ -376,7 +385,10 @@ async def bulk_reprocess(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],
     ids: list[int] = Body(..., embed=True),
+    engine: str = Body("auto", embed=True),
 ):
+    if engine not in ("api", "local", "auto"):
+        raise HTTPException(400, "engine must be one of: api, local, auto")
     rows = (await db.scalars(select(Receipt).where(Receipt.id.in_(ids)))).all()
     pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     n = 0
@@ -384,9 +396,9 @@ async def bulk_reprocess(
         if r.email_message_id:
             await pool.enqueue_job("process_message", r.email_message_id, force=True)
         else:
-            await pool.enqueue_job("process_uploaded_receipt", r.id)
+            await pool.enqueue_job("process_uploaded_receipt", r.id, engine)
         n += 1
-    return {"ok": True, "count": n}
+    return {"ok": True, "count": n, "engine": engine}
 
 
 @router.post("/bulk/resync")

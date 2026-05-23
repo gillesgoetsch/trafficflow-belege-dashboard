@@ -80,7 +80,13 @@ services:
       redis: {condition: service_healthy}
     volumes:
       - receipts-data:/data/receipts
-    command: ["arq", "app.workers.tasks.WorkerSettings"]
+      - models-data:/models
+    environment:
+      LOCAL_LLM_MODEL_PATH: /models/qwen2.5-3b-instruct-q4_k_m.gguf
+      LOCAL_LLM_THREADS: "4"
+    command: >
+      sh -c "scripts/ensure_local_model.sh &&
+             arq app.workers.tasks.WorkerSettings"
     networks: [internal]
 
   web:
@@ -158,6 +164,7 @@ volumes:
   db-data:
   redis-data:
   receipts-data:
+  models-data:
   caddy-data:
   caddy-config:
 

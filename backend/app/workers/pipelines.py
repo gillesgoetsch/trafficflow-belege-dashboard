@@ -433,11 +433,22 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
 # --- Manual upload processing ----------------------------------------------
 
 
-async def process_uploaded_receipt(ctx, receipt_id: int):
-    """Extract metadata using Claude (native PDF reading or Vision) and update
-    the receipt. Also runs org-routing — if the content matches a routing rule,
-    reassigns the receipt to that org."""
-    from app.services.claude_extract import extract_path
+async def process_uploaded_receipt(ctx, receipt_id: int, engine: str = "auto"):
+    """Extract metadata for a single uploaded receipt.
+
+    engine:
+      - "api"   : always use Claude (network)
+      - "local" : always use the local Qwen LLM (no Claude fallback even on
+                  failure — for testing/comparison)
+      - "auto"  : try local first; fall back to Claude when local is not
+                  confident or when the doc is image-only
+    """
+    from app.services.claude_extract import extract_path as claude_extract_path
+    from app.services.local_extract import (
+        extract_path as local_extract_path,
+        is_confident as local_is_confident,
+        _read_pdf_text,
+    )
     from app.services.org_routing import RoutingInput, route
 
     async with SessionLocal() as db:
@@ -448,15 +459,39 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
         if not path.exists():
             return {"ok": False, "reason": "file_missing"}
 
-        try:
-            ext = await extract_path(path)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("upload.claude_extract.failed", receipt_id=r.id, error=str(e))
-            ext = None
+        ext = None
+        engine_used = None
+        confidence_reason = None
+        if engine in ("local", "auto"):
+            try:
+                ext = await local_extract_path(path)
+                engine_used = "local"
+                if engine == "auto":
+                    ok, reason = local_is_confident(ext, _read_pdf_text(path))
+                    confidence_reason = reason
+                    if not ok:
+                        logger.info("upload.local_low_confidence",
+                                    receipt_id=r.id, reason=reason)
+                        ext = None  # trigger Claude fallback below
+                        engine_used = None
+            except Exception as e:  # noqa: BLE001
+                logger.warning("upload.local_extract.failed", receipt_id=r.id, error=str(e))
+                ext = None
+
+        if ext is None and engine in ("api", "auto"):
+            try:
+                ext = await claude_extract_path(path)
+                engine_used = "api"
+            except Exception as e:  # noqa: BLE001
+                logger.warning("upload.claude_extract.failed", receipt_id=r.id, error=str(e))
+                ext = None
 
         log_entry = {
             "ts": datetime.utcnow().isoformat(),
-            "event": "claude_extracted",
+            "event": "extracted",
+            "engine_requested": engine,
+            "engine_used": engine_used,
+            "confidence_reason": confidence_reason,
             "document_type": getattr(ext, "document_type", None),
             "is_receipt": getattr(ext, "is_receipt", None),
             "vendor": getattr(ext, "vendor", None),
