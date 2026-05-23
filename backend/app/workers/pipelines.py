@@ -434,7 +434,12 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
 
 
 async def process_uploaded_receipt(ctx, receipt_id: int):
-    """For drag-and-drop uploads: OCR the file, fill metadata, optionally classify."""
+    """Extract metadata using Claude (native PDF reading or Vision) and update
+    the receipt. Also runs org-routing — if the content matches a routing rule,
+    reassigns the receipt to that org."""
+    from app.services.claude_extract import extract_path
+    from app.services.org_routing import RoutingInput, route
+
     async with SessionLocal() as db:
         r = await db.get(Receipt, receipt_id)
         if not r:
@@ -443,58 +448,69 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
         if not path.exists():
             return {"ok": False, "reason": "file_missing"}
 
-        ocr_data = None
-        if path.suffix.lower() == ".pdf":
-            if is_likely_scanned(path):
-                try:
-                    ocr_data = await ocr_pdf(path)
-                except Exception as e:  # noqa: BLE001
-                    logger.warning("upload.ocr_pdf.failed", error=str(e))
-            else:
-                text = native_text(path)
-                meta = extract_meta(text)
-                if meta.date:
-                    r.document_date = meta.date
-                if meta.amount is not None:
-                    r.amount = meta.amount
-                if meta.currency and not r.currency:
-                    r.currency = meta.currency
-                if meta.invoice_number:
-                    r.invoice_number = meta.invoice_number
-                if meta.language:
-                    r.language = meta.language
-        else:
-            ocr_data = await ocr_image_bytes(path.read_bytes(), media_type=_image_media(path))
+        try:
+            ext = await extract_path(path)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("upload.claude_extract.failed", receipt_id=r.id, error=str(e))
+            ext = None
 
-        if ocr_data and ocr_data.is_receipt:
-            from decimal import Decimal
+        log_entry = {
+            "ts": datetime.utcnow().isoformat(),
+            "event": "claude_extracted",
+            "is_receipt": getattr(ext, "is_receipt", None),
+            "vendor": getattr(ext, "vendor", None),
+            "amount": str(getattr(ext, "total_amount", "") or ""),
+            "currency": getattr(ext, "currency", None),
+            "customer_hint": getattr(ext, "customer_hint", None),
+        }
+
+        if ext and ext.is_receipt:
             from dateutil import parser as _dp
-            if ocr_data.date:
+            if ext.document_date:
                 try:
-                    r.document_date = _dp.parse(ocr_data.date)
+                    r.document_date = _dp.parse(ext.document_date)
                 except Exception:
                     pass
-            if ocr_data.amount:
-                try:
-                    r.amount = Decimal(str(ocr_data.amount).replace(",", "."))
-                except Exception:
-                    pass
-            if ocr_data.currency:
-                r.currency = ocr_data.currency
-            if ocr_data.invoice_number:
-                r.invoice_number = ocr_data.invoice_number
-            if ocr_data.language:
-                r.language = ocr_data.language
-            if not r.provider_id and ocr_data.provider_slug:
-                prov = await resolve_provider_from_slug(db, ocr_data.provider_slug)
+            if ext.total_amount is not None:
+                r.amount = ext.total_amount
+            if ext.currency:
+                r.currency = ext.currency
+            if ext.vat_rate is not None:
+                r.vat_rate = ext.vat_rate
+            if ext.vat_amount is not None:
+                r.vat_amount = ext.vat_amount
+            if ext.invoice_number:
+                r.invoice_number = ext.invoice_number
+            if ext.language:
+                r.language = ext.language
+            if ext.notes and not r.notes:
+                r.notes = ext.notes
+            if not r.provider_id and ext.vendor_slug:
+                prov = await resolve_provider_from_slug(db, ext.vendor_slug)
                 if prov:
                     r.provider_id = prov.id
+
+            # Org routing — re-route to the right org if the doc content says so
+            new_org = await route(db, RoutingInput(
+                sender_email=None, subject=None, body_text=None,
+                customer_hint=ext.customer_hint or "",
+                default_organization_id=r.organization_id,
+            ))
+            if new_org and new_org != r.organization_id:
+                log_entry["routed_from_org"] = r.organization_id
+                log_entry["routed_to_org"] = new_org
+                r.organization_id = new_org
+
             r.status = ReceiptStatus.processed if r.provider_id else ReceiptStatus.review_needed
+        elif ext and ext.is_receipt is False:
+            # Confidently not a receipt
+            r.review_reason = "Claude: not_a_receipt"
+
         log = list(r.processing_log or [])
-        log.append({"ts": datetime.utcnow().isoformat(), "event": "upload_processed", "ocr": bool(ocr_data)})
+        log.append(log_entry)
         r.processing_log = log
         await db.commit()
-        return {"ok": True}
+        return {"ok": True, "amount": str(r.amount) if r.amount else None}
 
 
 def _image_media(path: Path) -> str:

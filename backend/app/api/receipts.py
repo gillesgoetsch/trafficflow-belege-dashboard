@@ -218,26 +218,92 @@ async def resync(
     return {"ok": True}
 
 
+def _safe_seg(s: str | None, fallback: str = "Unknown") -> str:
+    import re as _re
+    if not s:
+        return fallback
+    out = _re.sub(r"[^A-Za-z0-9._\-()\s]", "_", s).strip()[:80]
+    return out or fallback
+
+
 @router.post("/bulk/zip")
 async def bulk_zip(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],
     ids: list[int] = Body(..., embed=True),
 ):
-    if not ids or len(ids) > 1000:
-        raise HTTPException(400, "Provide 1-1000 receipt IDs")
+    """ZIP up the selected receipts with a bookkeeping-friendly folder structure:
+
+    {Organization}/
+      Credit-card/
+        {Provider}/
+          YYYY-MM-DD_Provider_Amount-Currency.pdf
+      Bank-transfer/
+        YYYY-MM-DD_Provider_Amount-Currency.pdf
+      Twint/, Cash/, ... (other payment methods)
+
+    Bank-transfer receipts are consolidated in one folder per organization
+    (they're usually rare and recipients often unique); credit-card receipts
+    are grouped by provider since they tend to be recurring subscriptions.
+    """
+    if not ids or len(ids) > 5000:
+        raise HTTPException(400, "Provide 1-5000 receipt IDs")
     rows = (await db.scalars(
-        select(Receipt).options(selectinload(Receipt.provider)).where(Receipt.id.in_(ids))
+        select(Receipt)
+        .options(selectinload(Receipt.provider))
+        .where(Receipt.id.in_(ids))
     )).all()
+
+    orgs = {o.id: o for o in (await db.scalars(select(Organization))).all()}
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for r in rows:
             if not os.path.exists(r.file_path):
                 continue
-            year = (r.document_date or r.received_at or r.created_at).year
-            month = (r.document_date or r.received_at or r.created_at).month
-            arcname = f"{r.organization_id}/{year}/{month:02d}/{r.filename}"
+            org = orgs.get(r.organization_id)
+            org_name = _safe_seg(org.name if org else f"org-{r.organization_id}")
+
+            pm = r.payment_method.value if hasattr(r.payment_method, "value") else str(r.payment_method)
+            pm_folder = {
+                "credit_card": "Credit-card",
+                "bank_transfer": "Bank-transfer",
+                "twint": "Twint",
+                "cash": "Cash",
+                "paypal": "PayPal",
+            }.get(pm, "Other")
+
+            provider_name = r.provider.display_name if r.provider else ""
+            provider_seg = _safe_seg(provider_name, "Unmatched")
+
+            # Build the structured filename
+            d = r.document_date or r.received_at or r.created_at
+            date_part = d.strftime("%Y-%m-%d") if d else "unknown-date"
+            amount_part = f"{float(r.amount):.2f}-{(r.currency or 'CHF')}" if r.amount is not None else "no-amount"
+            ext = os.path.splitext(r.filename)[1] or ".pdf"
+            new_name = f"{date_part}_{_safe_seg(provider_name or 'Unmatched', 'Unmatched')}_{amount_part}{ext}"
+
+            # Credit-card: group by provider. Everything else: flat per payment-method folder.
+            if pm == "credit_card":
+                arcname = f"{org_name}/Credit-card/{provider_seg}/{new_name}"
+            else:
+                arcname = f"{org_name}/{pm_folder}/{new_name}"
+
+            # Deduplicate within zip (rare but possible)
+            base = arcname
+            i = 1
+            try:
+                _ = zf.getinfo(arcname)
+                while True:
+                    stem, _ext = os.path.splitext(base)
+                    arcname = f"{stem} ({i}){_ext}"
+                    try:
+                        _ = zf.getinfo(arcname)
+                        i += 1
+                    except KeyError:
+                        break
+            except KeyError:
+                pass
             zf.write(r.file_path, arcname=arcname)
     buf.seek(0)
     return StreamingResponse(
@@ -332,6 +398,18 @@ async def bulk_book(
         r.booked_at = now
     await db.commit()
     return {"ok": True, "count": len(rows)}
+
+
+@router.post("/bulk/re-extract")
+async def bulk_re_extract(
+    _: Annotated[User, Depends(get_current_user)],
+    ids: list[int] = Body(..., embed=True),
+):
+    """Force re-extraction (Claude PDF/Vision) on a set of receipts."""
+    pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    for rid in ids:
+        await pool.enqueue_job("process_uploaded_receipt", rid)
+    return {"ok": True, "enqueued": len(ids)}
 
 
 @router.get("/export/csv")

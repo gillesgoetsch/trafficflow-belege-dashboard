@@ -43,12 +43,28 @@ export default function Inbox() {
     const y = now.getFullYear(), m = now.getMonth();
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
     let from: Date | null = null, to: Date | null = null;
+    const quarterRange = (yr: number, q: number) => [new Date(yr, q * 3, 1), new Date(yr, q * 3 + 3, 0)];
     switch (datePreset) {
       case "this_month": from = new Date(y, m, 1); to = new Date(y, m + 1, 0); break;
       case "last_month": from = new Date(y, m - 1, 1); to = new Date(y, m, 0); break;
-      case "this_quarter": { const q = Math.floor(m / 3); from = new Date(y, q * 3, 1); to = new Date(y, q * 3 + 3, 0); break; }
-      case "last_quarter": { const q = Math.floor(m / 3) - 1; const ny = q < 0 ? y - 1 : y; const nq = (q + 4) % 4; from = new Date(ny, nq * 3, 1); to = new Date(ny, nq * 3 + 3, 0); break; }
+      case "this_quarter": [from, to] = quarterRange(y, Math.floor(m / 3)); break;
+      case "last_quarter": {
+        const q = Math.floor(m / 3) - 1;
+        const ny = q < 0 ? y - 1 : y;
+        const nq = (q + 4) % 4;
+        [from, to] = quarterRange(ny, nq);
+        break;
+      }
+      case "q1_thisyear": [from, to] = quarterRange(y, 0); break;
+      case "q2_thisyear": [from, to] = quarterRange(y, 1); break;
+      case "q3_thisyear": [from, to] = quarterRange(y, 2); break;
+      case "q4_thisyear": [from, to] = quarterRange(y, 3); break;
+      case "q1_lastyear": [from, to] = quarterRange(y - 1, 0); break;
+      case "q2_lastyear": [from, to] = quarterRange(y - 1, 1); break;
+      case "q3_lastyear": [from, to] = quarterRange(y - 1, 2); break;
+      case "q4_lastyear": [from, to] = quarterRange(y - 1, 3); break;
       case "ytd": from = new Date(y, 0, 1); to = now; break;
+      case "this_year": from = new Date(y, 0, 1); to = new Date(y, 11, 31); break;
       case "last_year": from = new Date(y - 1, 0, 1); to = new Date(y - 1, 11, 31); break;
     }
     if (from && to) { setDateFrom(fmt(from)); setDateTo(fmt(to)); }
@@ -253,14 +269,23 @@ export default function Inbox() {
           </SelectContent>
         </Select>
         <Select value={datePreset} onValueChange={setDatePreset}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Date range" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Date range" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="this_month">This month</SelectItem>
             <SelectItem value="last_month">Last month</SelectItem>
             <SelectItem value="this_quarter">This quarter</SelectItem>
             <SelectItem value="last_quarter">Last quarter</SelectItem>
+            <SelectItem value="q1_thisyear">Q1 (this year)</SelectItem>
+            <SelectItem value="q2_thisyear">Q2 (this year)</SelectItem>
+            <SelectItem value="q3_thisyear">Q3 (this year)</SelectItem>
+            <SelectItem value="q4_thisyear">Q4 (this year)</SelectItem>
             <SelectItem value="ytd">Year to date</SelectItem>
+            <SelectItem value="this_year">This year</SelectItem>
             <SelectItem value="last_year">Last year</SelectItem>
+            <SelectItem value="q1_lastyear">Q1 (last year)</SelectItem>
+            <SelectItem value="q2_lastyear">Q2 (last year)</SelectItem>
+            <SelectItem value="q3_lastyear">Q3 (last year)</SelectItem>
+            <SelectItem value="q4_lastyear">Q4 (last year)</SelectItem>
           </SelectContent>
         </Select>
         <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDatePreset(""); }} className="w-36" title="From" />
@@ -299,8 +324,17 @@ export default function Inbox() {
                   else { setFocusIndex(idx); setOpenId(r.id); }
                 }}
               >
-                <TableCell onClick={(e) => { e.stopPropagation(); toggleSelect(r.id); }}>
-                  <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} />
+                <TableCell
+                  className="w-8"
+                  onClick={(e) => { e.stopPropagation(); toggleSelect(r.id); }}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-primary"
+                    checked={selectedIds.has(r.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => { e.stopPropagation(); toggleSelect(r.id); }}
+                  />
                 </TableCell>
                 <TableCell className="whitespace-nowrap">{fmtDate(r.document_date)}</TableCell>
                 <TableCell>{(providers ?? []).find((p) => p.id === r.provider_id)?.display_name ?? "—"}</TableCell>
@@ -312,9 +346,9 @@ export default function Inbox() {
                 <TableCell>{r.booked_at ? <Badge variant="success">booked</Badge> : <span className="text-muted-foreground text-xs">open</span>}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-0.5">
-                    <a href={`${apiBase}/receipts/${r.id}/file`} target="_blank" rel="noreferrer" title="Preview">
-                      <Button size="icon" variant="ghost" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button>
-                    </a>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" title="Preview" onClick={() => { setFocusIndex(idx); setOpenId(r.id); }}>
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
                     <a href={`${apiBase}/receipts/${r.id}/file`} download={r.filename} title="Download">
                       <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="h-3.5 w-3.5" /></Button>
                     </a>

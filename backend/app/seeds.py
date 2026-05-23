@@ -126,6 +126,19 @@ PROVIDER_SEEDS: list[tuple[str, str, str | None, str | None, str | None, list[tu
 ORG_SEEDS: list[tuple[str, str, str, list[str]]] = [
     ("TrafficFlow GmbH", "belege@trafficflow.ch", "CHF", []),
     ("SicherSatt AG", "belege@sichersatt.ch", "CHF", []),
+    ("kingnature AG", "belege@kingnature.ch", "CHF", []),
+]
+
+# (org_name, match_value, match_type)  match_type: subject_contains | sender_contains | body_contains
+# Used to route an incoming receipt to the right organization when the same mailbox
+# receives bills for multiple companies (e.g. belege@trafficflow.ch also gets Meta
+# Ads receipts for kingnature AG and SicherSatt brands).
+ORG_ROUTING_SEEDS: list[tuple[str, str, str]] = [
+    ("kingnature AG", "kingnature", "body_contains"),
+    ("kingnature AG", "FIMS", "body_contains"),
+    ("SicherSatt AG", "leckker", "body_contains"),
+    ("SicherSatt AG", "sichersatt", "body_contains"),
+    ("SicherSatt AG", "Reto", "body_contains"),
 ]
 
 
@@ -169,6 +182,26 @@ async def seed_providers(db):
     await db.commit()
 
 
+async def seed_routing(db):
+    from app.db.models import OrganizationRoutingRule
+    for org_name, value, mtype in ORG_ROUTING_SEEDS:
+        org = await db.scalar(select(Organization).where(Organization.name == org_name))
+        if not org:
+            continue
+        existing = await db.scalar(
+            select(OrganizationRoutingRule).where(
+                OrganizationRoutingRule.organization_id == org.id,
+                OrganizationRoutingRule.match_type == mtype,
+                OrganizationRoutingRule.match_value == value,
+            )
+        )
+        if not existing:
+            db.add(OrganizationRoutingRule(
+                organization_id=org.id, match_type=mtype, match_value=value, priority=100,
+            ))
+    await db.commit()
+
+
 async def seed_orgs(db):
     for name, email, currency, client_slugs in ORG_SEEDS:
         org = await db.scalar(select(Organization).where(Organization.name == name))
@@ -200,6 +233,7 @@ async def main():
             await seed_admin(db)
             await seed_providers(db)
             await seed_orgs(db)
+            await seed_routing(db)
         except IntegrityError as e:
             await db.rollback()
             logger.error("seed.integrity", error=str(e))

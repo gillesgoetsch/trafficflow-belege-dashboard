@@ -102,6 +102,30 @@ class User(Base, TimestampMixin):
     totp_secret: Mapped[str | None] = mapped_column(String(64))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(32), default="admin", server_default="admin", nullable=False)
+
+    organizations: Mapped[list[Organization]] = relationship(
+        secondary="user_organizations", lazy="selectin", viewonly=True,
+    )
+
+
+class UserOrganization(Base):
+    __tablename__ = "user_organizations"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class OrganizationRoutingRule(Base, TimestampMixin):
+    """Route an incoming receipt to the right org based on patterns in the
+    body / sender / subject. Used when one mailbox receives bills for several
+    legal entities (e.g. Meta Ads invoices for multiple AGs)."""
+    __tablename__ = "organization_routing_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False)
+    match_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    match_value: Mapped[str] = mapped_column(String(512), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
 
 
 # --- Organizations & sub-entities --------------------------------------------

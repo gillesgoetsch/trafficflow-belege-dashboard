@@ -41,8 +41,10 @@ export default function Review() {
       if (e.key === "j") { setFocus((i) => Math.min(items.length - 1, i + 1)); }
       else if (e.key === "k") { setFocus((i) => Math.max(0, i - 1)); }
       else if (e.key === "Enter") setOpenId(cur.receipt_id);
-      else if (e.key === "a" && cur.suggested_provider_id) {
-        decide.mutate({ id: cur.receipt_id, body: { action: "accept", provider_id: cur.suggested_provider_id, create_rule: true } });
+      else if (e.key === "a") {
+        const body: any = { action: "accept" };
+        if (cur.suggested_provider_id) { body.provider_id = cur.suggested_provider_id; body.create_rule = true; }
+        decide.mutate({ id: cur.receipt_id, body });
       }
       else if (e.key === "r") { decide.mutate({ id: cur.receipt_id, body: { action: "reject" } }); }
     };
@@ -92,9 +94,13 @@ export default function Review() {
                   onPick={(pid) => decide.mutate({ id: it.receipt_id, body: { action: "accept", provider_id: pid, create_rule: true } })}
                 />
                 <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "reject" } })}><X className="h-3.5 w-3.5 mr-1" /> Reject</Button>
-                {it.suggested_provider_id && (
+                {it.suggested_provider_id ? (
                   <Button size="sm" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "accept", provider_id: it.suggested_provider_id, create_rule: true } })}>
                     <Check className="h-3.5 w-3.5 mr-1" /> Accept
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "accept" } })} title="Accept as receipt — no provider needed">
+                    <Check className="h-3.5 w-3.5 mr-1" /> Accept as receipt
                   </Button>
                 )}
               </div>

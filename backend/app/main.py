@@ -17,11 +17,13 @@ from app.api import (
     deploy,
     health,
     mailboxes,
+    org_routing as org_routing_api,
     organizations,
     providers,
     receipts,
     review,
     upload,
+    users as users_api,
 )
 from app.config import settings
 from app.core.logging import get_logger, setup as setup_logging
@@ -77,6 +79,8 @@ app.include_router(review.router, prefix=f"{api_prefix}/review", tags=["review"]
 app.include_router(connectors.router, prefix=f"{api_prefix}/connectors", tags=["connectors"])
 app.include_router(upload.router, prefix=f"{api_prefix}/upload", tags=["upload"])
 app.include_router(dashboard.router, prefix=f"{api_prefix}/dashboard", tags=["dashboard"])
+app.include_router(users_api.router, prefix=f"{api_prefix}/users", tags=["users"])
+app.include_router(org_routing_api.router, prefix=f"{api_prefix}/org-routing", tags=["org-routing"])
 app.include_router(deploy.router, prefix="/_deploy", tags=["deploy"])
 
 
