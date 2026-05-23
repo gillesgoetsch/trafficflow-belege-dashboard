@@ -22,6 +22,7 @@
     }
   },
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(git *)",
       "Bash(npm *)",
