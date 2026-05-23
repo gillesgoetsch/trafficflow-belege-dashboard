@@ -50,7 +50,7 @@ export default function Dashboard() {
                   <XAxis dataKey="bucket" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
                   <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                  <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -100,7 +100,7 @@ export default function Dashboard() {
                   <XAxis dataKey="provider" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} interval={0} angle={-15} textAnchor="end" height={60} />
                   <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
                   <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -151,7 +151,7 @@ function Kpi({ title, value, sub }: { title: string; value: string; sub?: string
     <Card>
       <CardHeader className="pb-2">
         <CardDescription className="text-xs">{title}</CardDescription>
-        <CardTitle className="text-2xl font-semibold">{value}</CardTitle>
+        <CardTitle className="text-xl sm:text-2xl font-semibold truncate" title={value}>{value}</CardTitle>
       </CardHeader>
       {sub && <CardContent className="pt-0"><p className="text-xs text-muted-foreground">{sub}</p></CardContent>}
     </Card>
