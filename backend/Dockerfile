@@ -25,8 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY pyproject.toml ./
-# Build llama.cpp with OpenBLAS for ARM CPU acceleration
-ENV CMAKE_ARGS="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS"
+# Build llama.cpp with OpenBLAS for ARM CPU acceleration.
+# Cap parallelism to 2 — 6-core ARM has only 8 GB RAM and the C++ compile
+# easily OOMs with the default -j6, even with swap. Slower build, no thrash.
+ENV CMAKE_ARGS="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS" \
+    CMAKE_BUILD_PARALLEL_LEVEL=2 \
+    MAKEFLAGS="-j2"
 RUN pip install --upgrade pip && pip install -e . && \
     playwright install --with-deps chromium
 
