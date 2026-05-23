@@ -138,12 +138,31 @@ def _parse_response(text: str) -> dict:
         return {}
 
 
-async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
-    if not settings.anthropic_api_key:
-        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
-    pdf_bytes = pdf_path.read_bytes()
-    b64 = base64.standard_b64encode(pdf_bytes).decode()
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+async def _vision_fallback_pdf(pdf_path: Path, client: AsyncAnthropic) -> ClaudeReceipt:
+    """Render the PDF's first page to PNG and send to Claude Vision.
+
+    Used when the Documents API can't read the PDF (image-only scans usually).
+    """
+    from playwright.async_api import async_playwright
+    png_bytes = b""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(args=["--no-sandbox"])
+            try:
+                ctx = await browser.new_context(viewport={"width": 1240, "height": 1754})
+                page = await ctx.new_page()
+                await page.goto(pdf_path.absolute().as_uri(), wait_until="load", timeout=20000)
+                await page.wait_for_timeout(1500)
+                png_bytes = await page.screenshot(full_page=True, type="png")
+            finally:
+                await browser.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("claude_extract.vision_render_failed", path=str(pdf_path), error=str(e))
+        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, {"error": "render_failed"})
+
+    if not png_bytes:
+        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_png"})
+
     msg = await client.messages.create(
         model=settings.ocr_model,
         max_tokens=900,
@@ -151,7 +170,8 @@ async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
             {
                 "role": "user",
                 "content": [
-                    {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                                  "data": base64.standard_b64encode(png_bytes).decode()}},
                     {"type": "text", "text": _PROMPT},
                 ],
             }
@@ -159,6 +179,38 @@ async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
     )
     text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
     return _coerce(_parse_response(text))
+
+
+async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
+    if not settings.anthropic_api_key:
+        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
+    pdf_bytes = pdf_path.read_bytes()
+    b64 = base64.standard_b64encode(pdf_bytes).decode()
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    try:
+        msg = await client.messages.create(
+            model=settings.ocr_model,
+            max_tokens=900,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}},
+                        {"type": "text", "text": _PROMPT},
+                    ],
+                }
+            ],
+        )
+        text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
+        result = _coerce(_parse_response(text))
+        if result.is_receipt or result.total_amount is not None or result.vendor:
+            return result
+        logger.info("claude_extract.pdf_empty_falling_back_to_vision", path=str(pdf_path))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("claude_extract.pdf_failed_falling_back_to_vision", path=str(pdf_path), error=str(e))
+
+    # Render to image and try Vision (handles image-only scanned PDFs)
+    return await _vision_fallback_pdf(pdf_path, client)
 
 
 async def extract_from_image(image_path: Path) -> ClaudeReceipt:
