@@ -482,11 +482,19 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
                     r.document_date = _dp.parse(ext.document_date)
                 except Exception:
                     pass
+            elif ext.document_type in ("document",):
+                # Non-invoice document with no readable date — don't lie about
+                # the date (don't keep upload time). Clear it.
+                r.document_date = None
             if ext.due_date:
                 try:
                     r.due_date = _dp.parse(ext.due_date)
                 except Exception:
                     pass
+            else:
+                # Claude says no due date — clear any stale value (avoids
+                # the "issued == due" same-date bug).
+                r.due_date = None
             if ext.total_amount is not None:
                 r.amount = ext.total_amount
             if ext.currency:

@@ -49,22 +49,28 @@ Return STRICT JSON in this exact shape:
 }
 
 ------------------------------------------------------------------
-DOCUMENT TYPE — pick exactly ONE
+DOCUMENT TYPE — pick exactly ONE. Be decisive — most files are NOT "receipt".
 ------------------------------------------------------------------
-- "receipt"  : a paid OR payable invoice / Rechnung / Quittung / Beleg with a real
-               total amount and a real issue date. Most uploads are this.
-- "upcoming" : an invoice the vendor has issued IN ADVANCE for a future billing
-               period. Look for labels: "Upcoming - not due yet", "Status: Upcoming",
-               "Vorabrechnung", "Preview invoice", "Draft", "Will be charged on...".
-               These usually appear when subscription tools (Notion, Adobe, etc.)
-               send next month's invoice ahead of the actual charge. Keep
-               document_date as printed on the invoice; the accountant filters
-               these out when needed.
+- "upcoming" : MUST classify as "upcoming" if you see ANY of these markers:
+               * "Upcoming - not due yet"  (English Notion / SaaS pattern)
+               * "Status: Upcoming" / "Status: Draft"
+               * "Vorabrechnung" / "Vorausrechnung"
+               * "Preview invoice" / "Preview" / "Draft invoice"
+               * "Will be charged on …" / "Scheduled for …"
+               * The invoice date is in the FUTURE relative to the email/upload
+                 context (date printed > today's likely date)
+               Subscription tools (Notion, Adobe, Figma, Vercel) send next
+               month's invoice ahead of the actual charge — those are "upcoming",
+               not "receipt".
 - "document" : a legitimate non-invoice document the user wants archived:
-               packing slips, delivery confirmations, attestations, contracts,
-               certificates, receipt-without-amount (e.g. Twint screenshot that
-               you can't OCR a number from). Set total_amount to null if you
-               can't read it.
+               packing slips, delivery confirmations / Lieferschein, attestations,
+               contracts, certificates, terms of service, membership cards.
+               Also: a screenshot/scan that does NOT show a clear total amount or
+               vendor — if you can't read the total, prefer "document" over
+               "receipt". Set total_amount to null when not readable.
+- "receipt"  : a paid OR payable invoice / Rechnung / Quittung / Beleg with a real
+               total amount AND a real issue date AND a clear vendor. If any of
+               these three is missing or unreadable, prefer "document" or "other".
 - "other"    : truly junk — marketing email PDFs without a real bill, gibberish
                scans, unrelated files. Set total_amount and dates to null.
 
