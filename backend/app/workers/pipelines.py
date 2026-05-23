@@ -493,9 +493,11 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
                     r.document_date = _dp.parse(ext.document_date)
                 except Exception:
                     pass
-            elif ext.document_type in ("document",):
-                # Non-invoice document with no readable date — don't lie about
-                # the date (don't keep upload time). Clear it.
+            else:
+                # Claude returned no date — for uploads the initial value was
+                # the upload time, which is misleading (Twint screenshots,
+                # documents without a printed date, etc.). Clear it so the UI
+                # shows "—" rather than today's date.
                 r.document_date = None
             if ext.due_date:
                 try:
