@@ -8,9 +8,11 @@ import {
   Mailbox,
   ShieldCheck,
   Users,
+  UsersRound,
   Plug,
   UserCircle,
   Receipt,
+  Route as RouteIcon,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 
@@ -25,8 +27,10 @@ const SETTINGS = [
   { to: "/settings/organizations", icon: Building2, label: "Organizations" },
   { to: "/settings/mailboxes", icon: Mailbox, label: "Mailboxes" },
   { to: "/settings/providers", icon: ShieldCheck, label: "Providers" },
+  { to: "/settings/routing", icon: RouteIcon, label: "Org routing" },
   { to: "/settings/clients", icon: Users, label: "Sub-Clients" },
   { to: "/settings/connectors", icon: Plug, label: "Connectors" },
+  { to: "/settings/users", icon: UsersRound, label: "Users" },
   { to: "/settings/account", icon: UserCircle, label: "Account" },
 ];
 
