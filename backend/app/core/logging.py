@@ -20,7 +20,6 @@ def setup() -> None:
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
-        structlog.stdlib.add_logger_name,
     ]
     if settings.is_prod:
         processors.append(structlog.processors.JSONRenderer())

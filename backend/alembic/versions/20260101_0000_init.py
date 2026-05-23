@@ -19,24 +19,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Enums (created implicitly by columns; declared separately so they're reusable)
+    # Enums — `create_type=False` so column references don't try to recreate
+    # them; we create them explicitly below with checkfirst=True.
     match_type_enum = sa.Enum(
         "sender_domain", "sender_email", "subject_contains", "body_contains",
         "plus_alias", "sender_contains",
-        name="match_type",
+        name="match_type", create_type=False,
     )
-    classification_layer_enum = sa.Enum("1", "2", "3", "manual", name="classification_layer")
-    connector_type_enum = sa.Enum("local", "onedrive", "bexio", name="connector_type")
+    classification_layer_enum = sa.Enum("1", "2", "3", "manual", name="classification_layer", create_type=False)
+    connector_type_enum = sa.Enum("local", "onedrive", "bexio", name="connector_type", create_type=False)
     receipt_status_enum = sa.Enum(
         "processing", "processed", "review_needed", "archived", "failed",
-        name="receipt_status",
+        name="receipt_status", create_type=False,
     )
-    sync_status_enum = sa.Enum("pending", "synced", "failed", "skipped", name="sync_status")
+    sync_status_enum = sa.Enum("pending", "synced", "failed", "skipped", name="sync_status", create_type=False)
     email_msg_status_enum = sa.Enum(
         "pending", "classified", "rendered", "finished",
         "review_needed", "failed", "not_a_receipt",
-        name="email_msg_status",
+        name="email_msg_status", create_type=False,
     )
+
+    # Now actually create them (idempotent thanks to checkfirst=True).
 
     bind = op.get_bind()
     for enum in (
