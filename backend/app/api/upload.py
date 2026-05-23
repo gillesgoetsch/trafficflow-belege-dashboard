@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from datetime import datetime
 from typing import Annotated
 
@@ -85,7 +86,13 @@ async def _persist_upload(
     base = settings.storage_path / f"org-{organization_id}" / f"{doc_dt.year}" / f"{doc_dt.month:02d}"
     base.mkdir(parents=True, exist_ok=True)
     ext = _ext_from(file.filename, file.content_type)
-    target = base / f"upload-{digest[:12]}{ext}"
+    # Preserve the original filename — much more readable in the inbox.
+    raw_name = (file.filename or "upload").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    stem = re.sub(r"[^A-Za-z0-9._\-()\s]", "_", os.path.splitext(raw_name)[0]).strip() or "upload"
+    stem = stem[:120]
+    target = base / f"{stem}{ext}"
+    if target.exists():
+        target = base / f"{stem}-{digest[:8]}{ext}"
     target.write_bytes(content)
 
     is_pdf = ext == ".pdf"
