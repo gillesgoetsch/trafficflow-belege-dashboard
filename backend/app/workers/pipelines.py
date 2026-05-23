@@ -465,6 +465,23 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
             "customer_hint": getattr(ext, "customer_hint", None),
         }
 
+        # Local payment-method inference — no API cost. Runs even when Claude
+        # returned nothing useful. Only overrides when (a) currently "unknown",
+        # OR (b) PDF text clearly says credit_card / twint / paypal — those
+        # markers are reliable and worth correcting even an existing value.
+        from app.db.models import PaymentMethod
+        from app.services.payment_inference import (
+            extract_pdf_text, infer_payment_method,
+        )
+        pdf_text = extract_pdf_text(path)
+        inferred_pm = infer_payment_method(pdf_text, r.filename)
+        if inferred_pm and (
+            r.payment_method == PaymentMethod.unknown
+            or inferred_pm in (PaymentMethod.credit_card, PaymentMethod.twint, PaymentMethod.paypal)
+        ):
+            r.payment_method = inferred_pm
+            log_entry["inferred_payment_method"] = inferred_pm.value
+
         # API unavailable (credits, auth, render failure) — do NOT touch existing
         # receipt data. Log and return so the row keeps its current values.
         if ext and getattr(ext, "document_type", "") == "__unavailable__":

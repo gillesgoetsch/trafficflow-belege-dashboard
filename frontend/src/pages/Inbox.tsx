@@ -10,7 +10,7 @@ import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye } from "lucide-react";
+import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye, Loader2 } from "lucide-react";
 import { fmtDate, fmtMoney } from "../lib/format";
 import { ReceiptDetailPanel } from "../components/receipts/ReceiptDetailPanel";
 import { toast } from "../components/ui/toaster";
@@ -32,6 +32,7 @@ export default function Inbox() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
+  const [zipBusy, setZipBusy] = useState(false);
   const qc = useQueryClient();
 
   useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [orgId, search, providerId, status, paymentMethod, brand, booked, dateFrom, dateTo]);
@@ -144,11 +145,16 @@ export default function Inbox() {
     mutationFn: async (action: "zip" | "reprocess" | "resync" | "delete" | "book") => {
       const ids = Array.from(selectedIds);
       if (action === "zip") {
-        await downloadBlob("/receipts/bulk/zip", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids }),
-        }, `receipts-${Date.now()}.zip`);
+        setZipBusy(true);
+        try {
+          await downloadBlob("/receipts/bulk/zip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids }),
+          }, `receipts-${Date.now()}.zip`);
+        } finally {
+          setZipBusy(false);
+        }
         return;
       }
       await api(`/receipts/bulk/${action}`, { method: "POST", body: { ids } });
@@ -180,23 +186,28 @@ export default function Inbox() {
 
   // Export filtered set as ZIP (uses /bulk/zip with all currently-shown IDs across pages)
   const exportZipAll = async () => {
-    // Fetch all IDs matching current filters (page through if needed)
-    const allIds: number[] = [];
-    let p = 1;
-    while (true) {
-      const r: ReceiptList = await api("/receipts", { query: { ...queryParams, page: p, page_size: 200 } });
-      allIds.push(...r.items.map((x) => x.id));
-      if (allIds.length >= r.total) break;
-      p += 1;
-      if (p > 50) break; // safety stop
+    setZipBusy(true);
+    try {
+      // Fetch all IDs matching current filters (page through if needed)
+      const allIds: number[] = [];
+      let p = 1;
+      while (true) {
+        const r: ReceiptList = await api("/receipts", { query: { ...queryParams, page: p, page_size: 200 } });
+        allIds.push(...r.items.map((x) => x.id));
+        if (allIds.length >= r.total) break;
+        p += 1;
+        if (p > 50) break; // safety stop
+      }
+      if (allIds.length === 0) { toast({ title: "Keine Belege zum Exportieren" }); return; }
+      await downloadBlob("/receipts/bulk/zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: allIds }),
+      }, `receipts-${new Date().toISOString().slice(0,10)}.zip`);
+      toast({ title: `${allIds.length} Belege heruntergeladen`, variant: "success" });
+    } finally {
+      setZipBusy(false);
     }
-    if (allIds.length === 0) { toast({ title: "Keine Belege zum Exportieren" }); return; }
-    await downloadBlob("/receipts/bulk/zip", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: allIds }),
-    }, `receipts-${new Date().toISOString().slice(0,10)}.zip`);
-    toast({ title: `${allIds.length} Belege heruntergeladen`, variant: "success" });
   };
 
   return (
@@ -210,7 +221,10 @@ export default function Inbox() {
           {selectedIds.size > 0 ? (
             <>
               <span className="text-sm text-muted-foreground">{selectedIds.size} ausgewählt</span>
-              <Button size="sm" variant="outline" onClick={() => bulk.mutate("zip")}><Download className="h-3.5 w-3.5 mr-1" /> ZIP</Button>
+              <Button size="sm" variant="outline" onClick={() => bulk.mutate("zip")} disabled={zipBusy}>
+                {zipBusy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                {zipBusy ? "ZIP wird erstellt…" : "ZIP"}
+              </Button>
               <Button size="sm" variant="outline" onClick={() => bulk.mutate("book")}><BookCheck className="h-3.5 w-3.5 mr-1" /> Verbuchen</Button>
               <Button size="sm" variant="outline" onClick={() => bulk.mutate("reprocess")}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Neu verarbeiten</Button>
               <Button size="sm" variant="outline" onClick={() => bulk.mutate("resync")}>Erneut synchronisieren</Button>
@@ -219,7 +233,10 @@ export default function Inbox() {
           ) : (
             <>
               <Button size="sm" variant="outline" onClick={exportCsv}><FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> CSV exportieren</Button>
-              <Button size="sm" variant="outline" onClick={exportZipAll}><Download className="h-3.5 w-3.5 mr-1" /> Alle herunterladen (ZIP)</Button>
+              <Button size="sm" variant="outline" onClick={exportZipAll} disabled={zipBusy}>
+                {zipBusy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                {zipBusy ? "ZIP wird erstellt…" : "Alle herunterladen (ZIP)"}
+              </Button>
             </>
           )}
         </div>
