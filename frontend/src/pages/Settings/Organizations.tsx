@@ -21,20 +21,20 @@ export default function Organizations() {
       if (editing) return api(`/organizations/${editing.id}`, { method: "PATCH", body });
       return api("/organizations", { method: "POST", body });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["orgs"] }); setEditing(null); setCreating(false); toast({ title: "Saved", variant: "success" }); },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["orgs"] }); setEditing(null); setCreating(false); toast({ title: "Gespeichert", variant: "success" }); },
+    onError: (e: any) => toast({ title: "Fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
 
   const del = useMutation({
     mutationFn: (id: number) => api(`/organizations/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["orgs"] }); toast({ title: "Deleted", variant: "success" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["orgs"] }); toast({ title: "Gelöscht", variant: "success" }); },
   });
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
-        <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Add</Button>
+        <h1 className="text-2xl font-semibold tracking-tight">Firmen</h1>
+        <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Hinzufügen</Button>
       </header>
 
       <Card>
@@ -46,10 +46,10 @@ export default function Organizations() {
                 <div className="text-xs text-muted-foreground">{o.primary_email} · {o.default_currency} · {o.timezone}</div>
               </div>
               <Button size="icon" variant="ghost" onClick={() => setEditing(o)}><Edit3 className="h-4 w-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => confirm("Delete organization?") && del.mutate(o.id)}><Trash2 className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => confirm("Firma wirklich löschen?") && del.mutate(o.id)}><Trash2 className="h-4 w-4" /></Button>
             </div>
           ))}
-          {!orgs?.length && <div className="p-6 text-center text-muted-foreground">No organizations yet.</div>}
+          {!orgs?.length && <div className="p-6 text-center text-muted-foreground">Noch keine Firmen vorhanden.</div>}
         </div>
       </Card>
 
@@ -74,22 +74,22 @@ function OrganizationDialog({ open, org, onClose, onSave }: { open: boolean; org
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>{org ? "Edit organization" : "New organization"}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{org ? "Firma bearbeiten" : "Neue Firma"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><Label>Primary email</Label><Input type="email" value={primary_email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div><Label>Haupt-E-Mail</Label><Input type="email" value={primary_email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label>Currency</Label><Input value={default_currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></div>
-            <div><Label>Timezone</Label><Input value={timezone} onChange={(e) => setTimezone(e.target.value)} /></div>
+            <div><Label>Währung</Label><Input value={default_currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></div>
+            <div><Label>Zeitzone</Label><Input value={timezone} onChange={(e) => setTimezone(e.target.value)} /></div>
           </div>
           <div>
-            <Label>Filename template</Label>
+            <Label>Dateinamen-Vorlage</Label>
             <Input value={filename_template} onChange={(e) => setTemplate(e.target.value)} />
-            <p className="text-xs text-muted-foreground mt-1">Tokens: {"{date}"}, {"{provider}"}, {"{client}"}, {"{amount}"}, {"{currency}"}, {"{invoice_number}"}</p>
+            <p className="text-xs text-muted-foreground mt-1">Platzhalter: {"{date}"}, {"{provider}"}, {"{client}"}, {"{amount}"}, {"{currency}"}, {"{invoice_number}"}</p>
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={() => onSave({ name, primary_email, default_currency, timezone, filename_template })}>Save</Button>
+            <Button variant="outline" onClick={onClose}>Abbrechen</Button>
+            <Button onClick={() => onSave({ name, primary_email, default_currency, timezone, filename_template })}>Speichern</Button>
           </div>
         </div>
       </DialogContent>

@@ -457,6 +457,7 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
         log_entry = {
             "ts": datetime.utcnow().isoformat(),
             "event": "claude_extracted",
+            "document_type": getattr(ext, "document_type", None),
             "is_receipt": getattr(ext, "is_receipt", None),
             "vendor": getattr(ext, "vendor", None),
             "amount": str(getattr(ext, "total_amount", "") or ""),
@@ -464,7 +465,17 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
             "customer_hint": getattr(ext, "customer_hint", None),
         }
 
-        if ext and ext.is_receipt:
+        # Persist the doc-type classification regardless of receipt-ness
+        if ext and getattr(ext, "document_type", None):
+            from app.db.models import DocumentType
+            try:
+                r.document_type = DocumentType(ext.document_type)
+            except ValueError:
+                pass
+
+        # Fill metadata for receipt + upcoming + document (all three may have
+        # vendor/date/amount info). Only "other" is treated as no-data.
+        if ext and ext.document_type in ("receipt", "upcoming", "document"):
             from dateutil import parser as _dp
             if ext.document_date:
                 try:
@@ -506,10 +517,15 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
                 log_entry["routed_to_org"] = new_org
                 r.organization_id = new_org
 
-            r.status = ReceiptStatus.processed if r.provider_id else ReceiptStatus.review_needed
-        elif ext and ext.is_receipt is False:
-            # Confidently not a receipt
-            r.review_reason = "Claude: not_a_receipt"
+            # Documents and upcoming invoices auto-resolve to "processed" since
+            # they're not really pending review the way an unknown-provider
+            # receipt is. Receipts without a matched provider stay in review.
+            if ext.document_type in ("document", "upcoming"):
+                r.status = ReceiptStatus.processed
+            else:
+                r.status = ReceiptStatus.processed if r.provider_id else ReceiptStatus.review_needed
+        elif ext and ext.document_type == "other":
+            r.review_reason = "Claude: nicht klassifizierbar"
 
         log = list(r.processing_log or [])
         log.append(log_entry)

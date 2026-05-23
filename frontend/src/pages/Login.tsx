@@ -31,9 +31,9 @@ export default function Login() {
     } catch (err: any) {
       if (String(err.message || "").toLowerCase().includes("otp")) {
         setNeedsOtp(true);
-        toast({ title: "OTP required", description: "Enter the code from your authenticator app." });
+        toast({ title: "OTP-Code erforderlich", description: "Bitte Code aus der Authenticator-App eingeben." });
       } else {
-        toast({ title: "Login failed", description: err.message || "", variant: "destructive" });
+        toast({ title: "Anmeldung fehlgeschlagen", description: err.message || "", variant: "destructive" });
       }
     } finally {
       setSubmitting(false);
@@ -50,26 +50,26 @@ export default function Login() {
             </div>
           </div>
           <CardTitle>Belege-Hub</CardTitle>
-          <CardDescription>Sign in to continue</CardDescription>
+          <CardDescription>Bitte anmelden</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-3">
             <div>
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">E-Mail</Label>
               <Input id="email" type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Passwort</Label>
               <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1" />
             </div>
             {needsOtp && (
               <div>
-                <Label htmlFor="otp">6-digit code</Label>
+                <Label htmlFor="otp">6-stelliger Code</Label>
                 <Input id="otp" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value)} className="mt-1" />
               </div>
             )}
             <Button className="w-full" type="submit" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in"}
+              {submitting ? "Anmelden…" : "Anmelden"}
             </Button>
           </form>
         </CardContent>

@@ -33,7 +33,7 @@ export default function Upload() {
 
   const upload = useMutation({
     mutationFn: async (e: UploadEntry) => {
-      if (!orgId) throw new Error("Select an organization first");
+      if (!orgId) throw new Error("Bitte zuerst eine Firma auswählen");
       const form = new FormData();
       form.append("organization_id", String(orgId));
       if (providerId) form.append("provider_id", String(providerId));
@@ -48,7 +48,7 @@ export default function Upload() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { "application/pdf": [], "image/*": [] },
     onDrop: async (files) => {
-      if (!orgId) { toast({ title: "Select an organization first", variant: "destructive" }); return; }
+      if (!orgId) { toast({ title: "Bitte zuerst eine Firma auswählen", variant: "destructive" }); return; }
       const next = files.map((file) => ({ file, status: "queued" as const }));
       setEntries((s) => [...next, ...s]);
       for (const e of next) {
@@ -69,33 +69,33 @@ export default function Upload() {
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Upload receipts</h1>
-        <p className="text-sm text-muted-foreground">Drag & drop PDFs or photos. Metadata is extracted automatically.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Belege hochladen</h1>
+        <p className="text-sm text-muted-foreground">PDFs oder Fotos hierher ziehen. Daten werden automatisch ausgelesen.</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Pre-fill</CardTitle>
-          <CardDescription>Optional — only used if metadata extraction can't infer them.</CardDescription>
+          <CardTitle>Voreinstellungen</CardTitle>
+          <CardDescription>Optional — nur verwendet, wenn die Datenextraktion nichts findet.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Organization</div>
+            <div className="text-xs text-muted-foreground mb-1">Firma</div>
             <Select value={orgId ? String(orgId) : undefined} onValueChange={(v) => useUi.getState().setSelectedOrgId(parseInt(v))}>
-              <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Auswählen…" /></SelectTrigger>
               <SelectContent>{(orgs ?? []).map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}</SelectContent>
             </Select>
-            {currentOrg && <div className="text-[11px] text-muted-foreground mt-1">Default currency: {currentOrg.default_currency}</div>}
+            {currentOrg && <div className="text-[11px] text-muted-foreground mt-1">Standardwährung: {currentOrg.default_currency}</div>}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Provider (optional)</div>
+            <div className="text-xs text-muted-foreground mb-1">Anbieter (optional)</div>
             <Select value={providerId ? String(providerId) : undefined} onValueChange={(v) => setProviderId(parseInt(v))}>
-              <SelectTrigger><SelectValue placeholder="Auto" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Automatisch" /></SelectTrigger>
               <SelectContent>{(providers ?? []).map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.display_name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Payment method</div>
+            <div className="text-xs text-muted-foreground mb-1">Zahlungsmethode</div>
             <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -106,7 +106,7 @@ export default function Upload() {
             </Select>
           </div>
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Brand (optional)</div>
+            <div className="text-xs text-muted-foreground mb-1">Marke (optional)</div>
             <input
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={brand}
@@ -116,9 +116,9 @@ export default function Upload() {
           </div>
           {clients?.length ? (
             <div>
-              <div className="text-xs text-muted-foreground mb-1">Sub-client (optional)</div>
+              <div className="text-xs text-muted-foreground mb-1">Mandant (optional)</div>
               <Select value={clientId ? String(clientId) : undefined} onValueChange={(v) => setClientId(parseInt(v))}>
-                <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Keiner" /></SelectTrigger>
                 <SelectContent>{(clients ?? []).map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -136,22 +136,22 @@ export default function Upload() {
       >
         <input {...getInputProps()} />
         <UploadCloud className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-        <p className="text-sm">Drop PDFs/images here or click to browse</p>
-        <p className="text-xs text-muted-foreground mt-1">Up to 25 MB per file</p>
+        <p className="text-sm">PDFs/Bilder hier ablegen oder klicken zum Auswählen</p>
+        <p className="text-xs text-muted-foreground mt-1">Bis zu 25 MB pro Datei</p>
       </div>
 
       {entries.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Recent uploads</CardTitle>
+            <CardTitle>Letzte Uploads</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {entries.map((e, i) => (
               <div key={i} className="flex items-center gap-3 text-sm">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <span className="flex-1 truncate">{e.file.name}</span>
-                {e.status === "uploading" && <span className="text-muted-foreground">Uploading…</span>}
-                {e.status === "done" && <span className="flex items-center text-emerald-400"><CheckCircle2 className="h-4 w-4 mr-1" /> Done</span>}
+                {e.status === "uploading" && <span className="text-muted-foreground">Lädt hoch…</span>}
+                {e.status === "done" && <span className="flex items-center text-emerald-400"><CheckCircle2 className="h-4 w-4 mr-1" /> Fertig</span>}
                 {e.status === "error" && <span className="flex items-center text-destructive"><XCircle className="h-4 w-4 mr-1" /> {e.error}</span>}
               </div>
             ))}

@@ -283,11 +283,25 @@ async def bulk_zip(
             ext = os.path.splitext(r.filename)[1] or ".pdf"
             new_name = f"{date_part}_{_safe_seg(provider_name or 'Unmatched', 'Unmatched')}_{amount_part}{ext}"
 
-            # Credit-card: group by provider. Everything else: flat per payment-method folder.
-            if pm == "credit_card":
-                arcname = f"{org_name}/Credit-card/{provider_seg}/{new_name}"
+            # Document type routes to a different top-level folder:
+            #   document  → Dokumente/   (non-invoice files: packing slips etc.)
+            #   upcoming  → Vorabrechnungen/  (future-dated invoices)
+            #   receipt   → normal payment-method folders
+            doc_type = (r.document_type.value if hasattr(r.document_type, "value") else str(r.document_type or "receipt"))
+            if doc_type == "document":
+                arcname = f"{org_name}/Dokumente/{new_name}"
+            elif doc_type == "upcoming":
+                arcname = f"{org_name}/Vorabrechnungen/{provider_seg}/{new_name}"
+            elif pm == "credit_card":
+                arcname = f"{org_name}/Kreditkarte/{provider_seg}/{new_name}"
             else:
-                arcname = f"{org_name}/{pm_folder}/{new_name}"
+                folder_de = {
+                    "bank_transfer": "Banküberweisung",
+                    "twint": "Twint",
+                    "cash": "Bargeld",
+                    "paypal": "PayPal",
+                }.get(pm, "Sonstige")
+                arcname = f"{org_name}/{folder_de}/{new_name}"
 
             # Deduplicate within zip (rare but possible)
             base = arcname

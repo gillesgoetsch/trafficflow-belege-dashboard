@@ -3,7 +3,8 @@ import { api } from "../lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { fmtMoney } from "../lib/format";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Line, LineChart } from "recharts";
-import type { DashboardKPIs, DashboardCharts } from "../types";
+import type { DashboardKPIs, DashboardCharts, PaymentMethod } from "../types";
+import { PAYMENT_METHOD_LABEL } from "../types";
 import { useUi } from "../store/ui";
 
 export default function Dashboard() {
@@ -25,22 +26,22 @@ export default function Dashboard() {
   return (
     <div className="p-4 sm:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Overview of receipt ingestion and classification.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Übersicht</h1>
+        <p className="text-sm text-muted-foreground">Überblick über Belegerfassung und Klassifizierung.</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi title="Receipts (this month)" value={String(kpis?.receipts_this_month ?? "—")} sub={`${kpis?.receipts_last_month ?? 0} last month`} />
-        <Kpi title="Amount (this month)" value={fmtMoney(kpis?.total_amount_this_month, "CHF")} sub="processed only" />
-        <Kpi title="Review queue" value={String(kpis?.review_queue_size ?? "—")} sub={(kpis?.review_queue_size ?? 0) > 0 ? "needs attention" : "all clear"} />
-        <Kpi title="Sync failures" value={String(kpis?.sync_failed_count ?? "—")} sub="retried automatically" />
+        <Kpi title="Belege (dieser Monat)" value={String(kpis?.receipts_this_month ?? "—")} sub={`${kpis?.receipts_last_month ?? 0} im Vormonat`} />
+        <Kpi title="Betrag (dieser Monat)" value={fmtMoney(kpis?.total_amount_this_month, "CHF")} sub="nur verbuchte Belege" />
+        <Kpi title="In Prüfung" value={String(kpis?.review_queue_size ?? "—")} sub={(kpis?.review_queue_size ?? 0) > 0 ? "Aufmerksamkeit nötig" : "alles erledigt"} />
+        <Kpi title="Sync-Fehler" value={String(kpis?.sync_failed_count ?? "—")} sub="automatischer Retry" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Receipts per day</CardTitle>
-            <CardDescription>Last 90 days</CardDescription>
+            <CardTitle>Belege pro Tag</CardTitle>
+            <CardDescription>Letzte 90 Tage</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -59,8 +60,8 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Classification mix</CardTitle>
-            <CardDescription>How each layer contributes</CardDescription>
+            <CardTitle>Klassifizierungs-Mix</CardTitle>
+            <CardDescription>Beitrag der Klassifizierungs-Layer</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -89,8 +90,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Top providers</CardTitle>
-            <CardDescription>By count, last 90 days</CardDescription>
+            <CardTitle>Top Anbieter</CardTitle>
+            <CardDescription>Nach Anzahl, letzte 90 Tage</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -109,8 +110,8 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Payment methods</CardTitle>
-            <CardDescription>Spend by method, last 90 days</CardDescription>
+            <CardTitle>Zahlungsmethoden</CardTitle>
+            <CardDescription>Ausgaben nach Methode, letzte 90 Tage</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -134,7 +135,7 @@ export default function Dashboard() {
               {(charts?.by_payment_method ?? []).map((p, idx) => (
                 <div key={p.payment_method} className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full" style={{ background: ["#6366f1", "#22c55e", "#f59e0b", "#94a3b8", "#ef4444", "#06b6d4", "#a78bfa"][idx % 7] }} />
-                  <span className="text-muted-foreground flex-1 capitalize">{p.payment_method.replace("_", " ")}</span>
+                  <span className="text-muted-foreground flex-1">{PAYMENT_METHOD_LABEL[p.payment_method as PaymentMethod] ?? p.payment_method}</span>
                   <span>{p.count}</span>
                 </div>
               ))}
@@ -160,10 +161,10 @@ function Kpi({ title, value, sub }: { title: string; value: string; sub?: string
 
 function layerLabel(k: string) {
   switch (k) {
-    case "1": return "Layer 1 (rules)";
-    case "2": return "Layer 2 (LLM)";
-    case "3": return "Layer 3 (review)";
-    case "manual": return "Manual";
+    case "1": return "Layer 1 (Regeln)";
+    case "2": return "Layer 2 (KI)";
+    case "3": return "Layer 3 (Prüfung)";
+    case "manual": return "Manuell";
     default: return k;
   }
 }

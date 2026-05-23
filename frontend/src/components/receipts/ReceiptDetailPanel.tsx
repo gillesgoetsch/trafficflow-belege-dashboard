@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBase } from "../../lib/api";
-import type { PaymentMethod, Provider, ReceiptDetail, Client } from "../../types";
-import { PAYMENT_METHOD_LABEL } from "../../types";
+import type { DocumentType, PaymentMethod, Provider, ReceiptDetail, Client } from "../../types";
+import { DOCUMENT_TYPE_LABEL, PAYMENT_METHOD_LABEL } from "../../types";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../ui/dialog";
 import { fmtDate, fmtDateTime, fmtMoney } from "../../lib/format";
 import { Button } from "../ui/button";
@@ -36,22 +36,22 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
 
   const patch = useMutation({
     mutationFn: (body: any) => api<ReceiptDetail>(`/receipts/${id}`, { method: "PATCH", body }),
-    onSuccess: () => { toast({ title: "Saved", variant: "success" }); qc.invalidateQueries({ queryKey: ["receipts"] }); qc.invalidateQueries({ queryKey: ["receipt", id] }); setEdit({}); },
-    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+    onSuccess: () => { toast({ title: "Gespeichert", variant: "success" }); qc.invalidateQueries({ queryKey: ["receipts"] }); qc.invalidateQueries({ queryKey: ["receipt", id] }); setEdit({}); },
+    onError: (e: any) => toast({ title: "Speichern fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
 
   const reprocess = useMutation({
     mutationFn: () => api(`/receipts/${id}/reprocess`, { method: "POST" }),
-    onSuccess: () => toast({ title: "Reprocessing enqueued" }),
+    onSuccess: () => toast({ title: "Neuverarbeitung gestartet" }),
   });
 
   const book = useMutation({
     mutationFn: () => api(`/receipts/${id}/book`, { method: "POST" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["receipt", id] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Marked as booked", variant: "success" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["receipt", id] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Als verbucht markiert", variant: "success" }); },
   });
   const unbook = useMutation({
     mutationFn: () => api(`/receipts/${id}/unbook`, { method: "POST" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["receipt", id] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Unbooked" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["receipt", id] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Buchung zurückgesetzt" }); },
   });
 
   return (
@@ -63,18 +63,19 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
               <div className="min-w-0">
                 <DialogTitle className="truncate">{data.filename}</DialogTitle>
                 <DialogDescription className="text-xs">
-                  Received {fmtDateTime(data.received_at)} · Issued {fmtDate(data.document_date)}{data.due_date ? ` · Due ${fmtDate(data.due_date)}` : ""}
+                  Empfangen {fmtDateTime(data.received_at)} · Rechnungsdatum {fmtDate(data.document_date)}{data.due_date ? ` · Fällig ${fmtDate(data.due_date)}` : ""}
+                  {data.document_type && data.document_type !== "receipt" ? ` · ${DOCUMENT_TYPE_LABEL[data.document_type as DocumentType] || data.document_type}` : ""}
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-2">
                 {data.booked_at ? (
-                  <Button size="sm" variant="outline" onClick={() => unbook.mutate()}><BookX className="h-3.5 w-3.5 mr-1" /> Unbook</Button>
+                  <Button size="sm" variant="outline" onClick={() => unbook.mutate()}><BookX className="h-3.5 w-3.5 mr-1" /> Buchung zurück</Button>
                 ) : (
-                  <Button size="sm" onClick={() => book.mutate()}><BookCheck className="h-3.5 w-3.5 mr-1" /> Mark booked</Button>
+                  <Button size="sm" onClick={() => book.mutate()}><BookCheck className="h-3.5 w-3.5 mr-1" /> Verbuchen</Button>
                 )}
-                <Button size="sm" variant="outline" onClick={() => reprocess.mutate()}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Reprocess</Button>
+                <Button size="sm" variant="outline" onClick={() => reprocess.mutate()}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Neu verarbeiten</Button>
                 <a href={`${apiBase}/receipts/${data.id}/file`} download={data.filename}>
-                  <Button size="sm" variant="outline"><Download className="h-3.5 w-3.5 mr-1" /> Download</Button>
+                  <Button size="sm" variant="outline"><Download className="h-3.5 w-3.5 mr-1" /> Herunterladen</Button>
                 </a>
               </div>
             </div>
@@ -98,9 +99,19 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
 
             <div className="overflow-auto p-4 space-y-4">
               <section>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Metadata</div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Daten</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Provider">
+                  <Field label="Dokumenttyp">
+                    <Select value={edit.document_type ?? data.document_type ?? "receipt"} onValueChange={(v) => setEdit((s: any) => ({ ...s, document_type: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(DOCUMENT_TYPE_LABEL) as DocumentType[]).map((d) => (
+                          <SelectItem key={d} value={d}>{DOCUMENT_TYPE_LABEL[d]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Anbieter">
                     <Select value={String(edit.provider_id ?? data.provider_id ?? "")} onValueChange={(v) => setEdit((e: any) => ({ ...e, provider_id: parseInt(v) }))}>
                       <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                       <SelectContent>
@@ -108,7 +119,7 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Client">
+                  <Field label="Mandant">
                     <Select value={String(edit.client_id ?? data.client_id ?? "")} onValueChange={(v) => setEdit((e: any) => ({ ...e, client_id: parseInt(v) }))}>
                       <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                       <SelectContent>
@@ -116,32 +127,32 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Amount">
+                  <Field label="Betrag">
                     <Input value={edit.amount ?? data.amount ?? ""} onChange={(e) => setEdit((s: any) => ({ ...s, amount: e.target.value }))} />
                   </Field>
-                  <Field label="Currency">
+                  <Field label="Währung">
                     <Input value={edit.currency ?? data.currency ?? ""} onChange={(e) => setEdit((s: any) => ({ ...s, currency: e.target.value.toUpperCase() }))} />
                   </Field>
-                  <Field label="Date of issue">
+                  <Field label="Rechnungsdatum">
                     <Input
                       type="date"
                       value={(edit.document_date ?? data.document_date ?? "").slice(0, 10)}
                       onChange={(e) => setEdit((s: any) => ({ ...s, document_date: e.target.value }))}
-                      title="Rechnungsdatum — when the invoice was issued. Drives accounting periods."
+                      title="Rechnungsdatum — Datum der Rechnungsausstellung. Maßgeblich für die Buchhaltungsperiode."
                     />
                   </Field>
-                  <Field label="Due date">
+                  <Field label="Fälligkeitsdatum">
                     <Input
                       type="date"
                       value={(edit.due_date ?? data.due_date ?? "").slice(0, 10)}
                       onChange={(e) => setEdit((s: any) => ({ ...s, due_date: e.target.value }))}
-                      title="Fälligkeitsdatum — when payment is due. Often empty for already-paid CC charges."
+                      title="Fälligkeitsdatum — wann die Zahlung fällig ist. Häufig leer bei bereits gezahlten Kreditkartenbelegen."
                     />
                   </Field>
-                  <Field label="Invoice #">
+                  <Field label="Rechnungsnr.">
                     <Input value={edit.invoice_number ?? data.invoice_number ?? ""} onChange={(e) => setEdit((s: any) => ({ ...s, invoice_number: e.target.value }))} />
                   </Field>
-                  <Field label="Payment method">
+                  <Field label="Zahlungsmethode">
                     <Select value={edit.payment_method ?? data.payment_method} onValueChange={(v) => setEdit((s: any) => ({ ...s, payment_method: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -151,54 +162,54 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Brand">
+                  <Field label="Marke">
                     <Input value={edit.brand ?? data.brand ?? ""} placeholder="leckker / sichersatt / ..." onChange={(e) => setEdit((s: any) => ({ ...s, brand: e.target.value }))} />
                   </Field>
-                  <Field label="VAT rate %">
-                    <Input type="number" step="0.1" value={edit.vat_rate ?? data.vat_rate ?? ""} placeholder="e.g. 8.1" onChange={(e) => setEdit((s: any) => ({ ...s, vat_rate: e.target.value }))} />
+                  <Field label="MwSt-Satz %">
+                    <Input type="number" step="0.1" value={edit.vat_rate ?? data.vat_rate ?? ""} placeholder="z.B. 8.1" onChange={(e) => setEdit((s: any) => ({ ...s, vat_rate: e.target.value }))} />
                   </Field>
-                  <Field label="VAT amount">
-                    <Input type="number" step="0.01" value={edit.vat_amount ?? data.vat_amount ?? ""} placeholder="auto / manual" onChange={(e) => setEdit((s: any) => ({ ...s, vat_amount: e.target.value }))} />
+                  <Field label="MwSt-Betrag">
+                    <Input type="number" step="0.01" value={edit.vat_amount ?? data.vat_amount ?? ""} placeholder="auto / manuell" onChange={(e) => setEdit((s: any) => ({ ...s, vat_amount: e.target.value }))} />
                   </Field>
-                  <Field label="Bookkeeping ref">
-                    <Input value={edit.bookkeeping_ref ?? data.bookkeeping_ref ?? ""} placeholder="Bexio #, journal entry…" onChange={(e) => setEdit((s: any) => ({ ...s, bookkeeping_ref: e.target.value }))} />
+                  <Field label="Buchhaltungs-Ref.">
+                    <Input value={edit.bookkeeping_ref ?? data.bookkeeping_ref ?? ""} placeholder="Bexio-Nr., Buchungsnr.…" onChange={(e) => setEdit((s: any) => ({ ...s, bookkeeping_ref: e.target.value }))} />
                   </Field>
                   <Field label="Status">
                     <Select value={edit.status ?? data.status} onValueChange={(v) => setEdit((s: any) => ({ ...s, status: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="processed">processed</SelectItem>
-                        <SelectItem value="review_needed">review_needed</SelectItem>
-                        <SelectItem value="archived">archived</SelectItem>
+                        <SelectItem value="processed">Verarbeitet</SelectItem>
+                        <SelectItem value="review_needed">Prüfung nötig</SelectItem>
+                        <SelectItem value="archived">Archiviert</SelectItem>
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Confidence">
+                  <Field label="Konfidenz">
                     <div className="text-sm h-9 flex items-center px-1">{Math.round(parseFloat(data.confidence) * 100)}%</div>
                   </Field>
                 </div>
                 <div className="mt-3">
-                  <Label className="text-xs">Notes</Label>
+                  <Label className="text-xs">Notizen</Label>
                   <Textarea
                     rows={2}
-                    placeholder="Why is this expense — context for the accountant…"
+                    placeholder="Warum diese Ausgabe — Kontext für die Buchhaltung…"
                     value={edit.notes ?? data.notes ?? ""}
                     onChange={(e) => setEdit((s: any) => ({ ...s, notes: e.target.value }))}
                     className="mt-1"
                   />
                 </div>
                 <Button className="mt-3" size="sm" disabled={!Object.keys(edit).length} onClick={() => patch.mutate(edit)}>
-                  <Save className="h-3.5 w-3.5 mr-1" /> Save
+                  <Save className="h-3.5 w-3.5 mr-1" /> Speichern
                 </Button>
                 {data.booked_at && (
                   <p className="text-[11px] text-muted-foreground mt-2">
-                    Booked {fmtDateTime(data.booked_at)}{data.bookkeeping_ref ? ` · ref ${data.bookkeeping_ref}` : ""}
+                    Verbucht {fmtDateTime(data.booked_at)}{data.bookkeeping_ref ? ` · Ref ${data.bookkeeping_ref}` : ""}
                   </p>
                 )}
               </section>
 
               <section>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Sync targets</div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Sync-Ziele</div>
                 <div className="space-y-1.5">
                   {(data.sync_targets ?? []).map((t) => (
                     <div key={t.id} className="flex items-center justify-between text-sm">
@@ -208,12 +219,12 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                       </Badge>
                     </div>
                   ))}
-                  {!(data.sync_targets ?? []).length && <p className="text-sm text-muted-foreground">No sync targets configured.</p>}
+                  {!(data.sync_targets ?? []).length && <p className="text-sm text-muted-foreground">Keine Sync-Ziele konfiguriert.</p>}
                 </div>
               </section>
 
               <section>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Processing history</div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Verarbeitungsverlauf</div>
                 <div className="space-y-1.5 text-xs">
                   {(data.processing_log ?? []).map((entry, i) => (
                     <div key={i} className="rounded border border-border bg-muted/30 p-2 font-mono whitespace-pre-wrap break-words">
@@ -225,7 +236,7 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
             </div>
           </>
         )}
-        {isLoading && <div className="p-6 col-span-2">Loading…</div>}
+        {isLoading && <div className="p-6 col-span-2">Wird geladen…</div>}
       </DialogContent>
     </Dialog>
   );

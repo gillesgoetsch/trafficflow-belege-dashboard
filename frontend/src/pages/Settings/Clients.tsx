@@ -42,13 +42,13 @@ export default function Clients() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Sub-clients</h1>
-        <Button onClick={() => setCreating(true)} disabled={!orgId}><Plus className="h-4 w-4 mr-1" /> Add sub-client</Button>
+        <h1 className="text-2xl font-semibold tracking-tight">Mandanten</h1>
+        <Button onClick={() => setCreating(true)} disabled={!orgId}><Plus className="h-4 w-4 mr-1" /> Mandant hinzufügen</Button>
       </header>
       <p className="text-sm text-muted-foreground">
-        Use sub-clients only when one organization manages receipts for separate legal entities.
-        For lightweight brand tagging within one company, edit the per-receipt <em>Brand</em> field
-        on the inbox or detail view instead.
+        Mandanten nur verwenden, wenn eine Firma Belege für separate juristische Personen verwaltet.
+        Für leichtes Markieren innerhalb einer Firma stattdessen das Feld <em>Marke</em> pro Beleg
+        in der Übersicht oder Detailansicht nutzen.
       </p>
 
       <Card>
@@ -57,14 +57,14 @@ export default function Clients() {
             <div key={c.id} className="p-4 flex items-center gap-3">
               <div className="flex-1">
                 <div className="font-medium">{c.name}</div>
-                <div className="text-xs text-muted-foreground">slug: {c.slug}</div>
+                <div className="text-xs text-muted-foreground">Slug: {c.slug}</div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setMappingFor(c)}>Mappings</Button>
-              <Button size="icon" variant="ghost" onClick={() => setEditing(c)} aria-label="edit"><Edit3 className="h-4 w-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => confirm("Delete?") && del.mutate(c.id)}><Trash2 className="h-4 w-4" /></Button>
+              <Button size="sm" variant="outline" onClick={() => setMappingFor(c)}>Zuordnungen</Button>
+              <Button size="icon" variant="ghost" onClick={() => setEditing(c)} aria-label="bearbeiten"><Edit3 className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => confirm("Wirklich löschen?") && del.mutate(c.id)}><Trash2 className="h-4 w-4" /></Button>
             </div>
           ))}
-          {!clients?.length && <div className="p-6 text-center text-muted-foreground">No sub-clients for this organization.</div>}
+          {!clients?.length && <div className="p-6 text-center text-muted-foreground">Keine Mandanten für diese Firma.</div>}
         </div>
       </Card>
 
@@ -82,14 +82,14 @@ function EditDialog({ client, onClose, onSave }: { client: Client; onClose: () =
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Edit sub-client</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Mandant bearbeiten</DialogTitle></DialogHeader>
         <div className="space-y-2">
           <div><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div><Label>Slug</Label><Input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} /></div>
-          <div><Label>Color (optional)</Label><Input value={color} placeholder="#22c55e" onChange={(e) => setColor(e.target.value)} /></div>
+          <div><Label>Farbe (optional)</Label><Input value={color} placeholder="#22c55e" onChange={(e) => setColor(e.target.value)} /></div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={() => onSave({ organization_id: client.organization_id, name, slug, color: color || null })}>Save</Button>
+            <Button variant="outline" onClick={onClose}>Abbrechen</Button>
+            <Button onClick={() => onSave({ organization_id: client.organization_id, name, slug, color: color || null })}>Speichern</Button>
           </div>
         </div>
       </DialogContent>
@@ -103,13 +103,13 @@ function CreateDialog({ orgId, onClose, onSave }: { orgId: number; onClose: () =
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>New sub-client</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Neuer Mandant</DialogTitle></DialogHeader>
         <div className="space-y-2">
           <div><Label>Name</Label><Input value={name} onChange={(e) => { setName(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "")); }} /></div>
           <div><Label>Slug</Label><Input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} /></div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={() => onSave({ organization_id: orgId, name, slug })}>Save</Button>
+            <Button variant="outline" onClick={onClose}>Abbrechen</Button>
+            <Button onClick={() => onSave({ organization_id: orgId, name, slug })}>Speichern</Button>
           </div>
         </div>
       </DialogContent>
@@ -139,23 +139,23 @@ function MappingsDialog({ client, providers, onClose }: { client: Client; provid
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader><DialogTitle>Mappings · {client.name}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Zuordnungen · {client.name}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-12 items-end gap-2">
-            <div className="col-span-4"><Label>Match type</Label>
+            <div className="col-span-4"><Label>Match-Typ</Label>
               <Select value={mt} onValueChange={(v) => setMt(v as MatchType)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{MATCH_TYPES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="col-span-5"><Label>Value</Label><Input value={mv} onChange={(e) => setMv(e.target.value)} placeholder="leckker  /  +leckker@trafficflow.ch" /></div>
-            <div className="col-span-3"><Label>Provider (opt)</Label>
+            <div className="col-span-5"><Label>Wert</Label><Input value={mv} onChange={(e) => setMv(e.target.value)} placeholder="leckker  /  +leckker@trafficflow.ch" /></div>
+            <div className="col-span-3"><Label>Anbieter (opt.)</Label>
               <Select value={providerId ? String(providerId) : undefined} onValueChange={(v) => setProviderId(parseInt(v))}>
-                <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Beliebig" /></SelectTrigger>
                 <SelectContent>{providers.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.display_name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <Button className="col-span-12" disabled={!mv} onClick={() => add.mutate()}>Add mapping</Button>
+            <Button className="col-span-12" disabled={!mv} onClick={() => add.mutate()}>Zuordnung hinzufügen</Button>
           </div>
           <div className="divide-y divide-border border border-border rounded-md max-h-72 overflow-auto">
             {(mappings ?? []).map((m) => (
@@ -163,12 +163,12 @@ function MappingsDialog({ client, providers, onClose }: { client: Client; provid
                 <div className="space-x-2">
                   <Badge variant="outline">{m.match_type}</Badge>
                   <span className="font-mono">{m.match_value}</span>
-                  {m.provider_id && <Badge variant="secondary">prov #{m.provider_id}</Badge>}
+                  {m.provider_id && <Badge variant="secondary">Anbieter #{m.provider_id}</Badge>}
                 </div>
                 <Button size="icon" variant="ghost" onClick={() => del.mutate(m.id)}><Trash2 className="h-4 w-4" /></Button>
               </div>
             ))}
-            {!mappings?.length && <div className="p-4 text-center text-muted-foreground text-sm">No mappings yet.</div>}
+            {!mappings?.length && <div className="p-4 text-center text-muted-foreground text-sm">Noch keine Zuordnungen.</div>}
           </div>
         </div>
       </DialogContent>

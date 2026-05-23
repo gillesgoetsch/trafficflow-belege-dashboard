@@ -41,7 +41,7 @@ export function TopBar() {
         className="group flex-1 max-w-md flex items-center gap-2 h-9 px-3 rounded-md border border-input text-sm text-muted-foreground hover:text-foreground hover:border-ring transition-colors"
       >
         <Search className="h-4 w-4" />
-        <span>Search or jump…</span>
+        <span>Suchen oder navigieren…</span>
         <span className="ml-auto text-[10px] tracking-wide opacity-60">
           <kbd className="px-1 py-0.5 rounded bg-muted">⌘K</kbd>
         </span>
@@ -53,7 +53,7 @@ export function TopBar() {
           onValueChange={(v) => setSelectedOrgId(parseInt(v))}
         >
           <SelectTrigger>
-            <SelectValue placeholder="All organizations" />
+            <SelectValue placeholder="Alle Firmen" />
           </SelectTrigger>
           <SelectContent>
             {(orgs ?? []).map((o) => (
@@ -74,11 +74,11 @@ export function TopBar() {
         <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => navigate("/settings/account")}>Account & security</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => navigate("/onboarding")}>Onboarding wizard</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => navigate("/settings/account")}>Konto & Sicherheit</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => navigate("/onboarding")}>Einrichtungsassistent</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={async () => { await logout(); navigate("/login"); }}>
-            <LogOut className="h-4 w-4 mr-2" /> Logout
+            <LogOut className="h-4 w-4 mr-2" /> Abmelden
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

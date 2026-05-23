@@ -27,8 +27,8 @@ export default function Review() {
   const decide = useMutation({
     mutationFn: ({ id, body }: { id: number; body: any }) =>
       api(`/review/${id}/decide`, { method: "POST", body }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["review"] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Updated", variant: "success" }); },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["review"] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Aktualisiert", variant: "success" }); },
+    onError: (e: any) => toast({ title: "Fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
 
   useEffect(() => {
@@ -56,8 +56,8 @@ export default function Review() {
     <div className="p-4 sm:p-6 space-y-4">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2"><ListChecks className="h-5 w-5" /> Review queue</h1>
-          <p className="text-sm text-muted-foreground">{items?.length ?? 0} items awaiting decision · <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">j/k</kbd> navigate · <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">a</kbd> accept · <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">r</kbd> reject</p>
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2"><ListChecks className="h-5 w-5" /> Prüfung</h1>
+          <p className="text-sm text-muted-foreground">{items?.length ?? 0} Belege zur Prüfung · <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">j/k</kbd> navigieren · <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">a</kbd> annehmen · <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">r</kbd> ablehnen</p>
         </div>
       </header>
 
@@ -67,7 +67,7 @@ export default function Review() {
             <div className="p-3 flex items-center gap-3">
               <div className="flex-1 min-w-0" onClick={() => { setFocus(idx); setOpenId(it.receipt_id); }} role="button">
                 <div className="text-sm font-medium truncate flex items-center gap-2">
-                  <span className="truncate">{it.subject || "(no subject)"}</span>
+                  <span className="truncate">{it.subject || "(kein Betreff)"}</span>
                   {it.amount && (
                     <span className="text-muted-foreground font-normal">·</span>
                   )}
@@ -93,14 +93,14 @@ export default function Review() {
                   providers={providers ?? []}
                   onPick={(pid) => decide.mutate({ id: it.receipt_id, body: { action: "accept", provider_id: pid, create_rule: true } })}
                 />
-                <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "reject" } })}><X className="h-3.5 w-3.5 mr-1" /> Reject</Button>
+                <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "reject" } })}><X className="h-3.5 w-3.5 mr-1" /> Ablehnen</Button>
                 {it.suggested_provider_id ? (
                   <Button size="sm" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "accept", provider_id: it.suggested_provider_id, create_rule: true } })}>
-                    <Check className="h-3.5 w-3.5 mr-1" /> Accept
+                    <Check className="h-3.5 w-3.5 mr-1" /> Annehmen
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "accept" } })} title="Accept as receipt — no provider needed">
-                    <Check className="h-3.5 w-3.5 mr-1" /> Accept as receipt
+                  <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: it.receipt_id, body: { action: "accept" } })} title="Als Beleg annehmen — kein Anbieter nötig">
+                    <Check className="h-3.5 w-3.5 mr-1" /> Als Beleg annehmen
                   </Button>
                 )}
               </div>
@@ -108,7 +108,7 @@ export default function Review() {
           </Card>
         ))}
         {!items?.length && (
-          <div className="text-center py-16 text-muted-foreground text-sm">Inbox zero — no items to review.</div>
+          <div className="text-center py-16 text-muted-foreground text-sm">Alles erledigt — keine Belege zur Prüfung.</div>
         )}
       </div>
       <ReceiptDetailPanel id={openId} onClose={() => setOpenId(null)} />
@@ -119,7 +119,7 @@ export default function Review() {
 function ProviderPicker({ value, providers, onPick }: { value: number | null; providers: Provider[]; onPick: (id: number) => void }) {
   return (
     <Select value={value ? String(value) : undefined} onValueChange={(v) => onPick(parseInt(v))}>
-      <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Assign provider…" /></SelectTrigger>
+      <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Anbieter zuweisen…" /></SelectTrigger>
       <SelectContent>
         {providers.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.display_name}</SelectItem>)}
       </SelectContent>

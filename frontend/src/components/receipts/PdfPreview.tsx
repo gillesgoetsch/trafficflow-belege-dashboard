@@ -65,22 +65,22 @@ export function PdfPreview({ url, filename }: Props) {
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
         <div className="mx-2 h-4 w-px bg-border" />
-        <Button size="sm" variant="ghost" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z * 0.8))} title="Zoom out">
+        <Button size="sm" variant="ghost" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z * 0.8))} title="Verkleinern">
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
         <span className="font-mono text-muted-foreground w-12 text-center">{Math.round(zoom * 100)}%</span>
-        <Button size="sm" variant="ghost" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))} title="Zoom in">
+        <Button size="sm" variant="ghost" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))} title="Vergrößern">
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => { setZoom(1); setOrigin({ x: 50, y: 50 }); }} title="Fit width">
+        <Button size="sm" variant="ghost" onClick={() => { setZoom(1); setOrigin({ x: 50, y: 50 }); }} title="An Breite anpassen">
           <Maximize2 className="h-3.5 w-3.5" />
         </Button>
         <div className="flex-1" />
         <a href={url} download={filename}>
-          <Button size="sm" variant="ghost" title="Download"><Download className="h-3.5 w-3.5" /></Button>
+          <Button size="sm" variant="ghost" title="Herunterladen"><Download className="h-3.5 w-3.5" /></Button>
         </a>
         <a href={url} target="_blank" rel="noreferrer">
-          <Button size="sm" variant="ghost" title="Open in new tab"><ExternalLink className="h-3.5 w-3.5" /></Button>
+          <Button size="sm" variant="ghost" title="In neuem Tab öffnen"><ExternalLink className="h-3.5 w-3.5" /></Button>
         </a>
       </div>
       <div
@@ -91,8 +91,8 @@ export function PdfPreview({ url, filename }: Props) {
         {err ? (
           <div className="text-sm text-muted-foreground p-6 text-center space-y-2">
             <FileX className="h-6 w-6 mx-auto opacity-50" />
-            <p>Couldn't render PDF: {err}</p>
-            <a className="text-primary underline" href={url} target="_blank" rel="noreferrer">Open in a new tab</a>
+            <p>PDF konnte nicht angezeigt werden: {err}</p>
+            <a className="text-primary underline" href={url} target="_blank" rel="noreferrer">In neuem Tab öffnen</a>
           </div>
         ) : (
           <div
@@ -106,9 +106,9 @@ export function PdfPreview({ url, filename }: Props) {
             <Document
               file={url}
               onLoadSuccess={({ numPages: n }) => { setNumPages(n); setErr(null); }}
-              onLoadError={(e) => setErr(e?.message || "load failed")}
-              loading={<div className="text-sm text-muted-foreground p-6">Loading PDF…</div>}
-              error={<div className="text-sm text-destructive p-6">Failed to load.</div>}
+              onLoadError={(e) => setErr(e?.message || "Laden fehlgeschlagen")}
+              loading={<div className="text-sm text-muted-foreground p-6">PDF wird geladen…</div>}
+              error={<div className="text-sm text-destructive p-6">Fehler beim Laden.</div>}
             >
               <Page pageNumber={page} width={baseWidth} renderAnnotationLayer={false} renderTextLayer={false} />
             </Document>
@@ -116,7 +116,7 @@ export function PdfPreview({ url, filename }: Props) {
         )}
       </div>
       <div className="px-2 py-1 border-t border-border text-[10px] text-muted-foreground text-center">
-        Scroll-wheel to zoom on the cursor · click <kbd className="px-1 rounded bg-muted">fit</kbd> to reset
+        Mausrad zum Zoomen am Cursor · <kbd className="px-1 rounded bg-muted">An Breite</kbd> setzt zurück
       </div>
     </div>
   );

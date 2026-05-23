@@ -220,6 +220,7 @@ class ReceiptOut(_ORM):
     status: ReceiptStatus
     payment_method: PaymentMethod
     brand: str | None
+    document_type: str = "receipt"
     notes: str | None = None
     vat_rate: Decimal | None = None
     vat_amount: Decimal | None = None

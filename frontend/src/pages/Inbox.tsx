@@ -154,11 +154,18 @@ export default function Inbox() {
       await api(`/receipts/bulk/${action}`, { method: "POST", body: { ids } });
     },
     onSuccess: (_, action) => {
-      toast({ title: `Bulk ${action} ok`, variant: "success" });
+      const labels: Record<string, string> = {
+        zip: "ZIP heruntergeladen",
+        reprocess: "Neu verarbeitet",
+        resync: "Synchronisiert",
+        delete: "Gelöscht",
+        book: "Als verbucht markiert",
+      };
+      toast({ title: labels[action] || "Aktion ausgeführt", variant: "success" });
       qc.invalidateQueries({ queryKey: ["receipts"] });
       setSelectedIds(new Set());
     },
-    onError: (e: any) => toast({ title: "Bulk action failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Massenaktion fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
 
   // Export filtered set as CSV (server-side filter)
@@ -183,36 +190,36 @@ export default function Inbox() {
       p += 1;
       if (p > 50) break; // safety stop
     }
-    if (allIds.length === 0) { toast({ title: "Nothing to export" }); return; }
+    if (allIds.length === 0) { toast({ title: "Keine Belege zum Exportieren" }); return; }
     await downloadBlob("/receipts/bulk/zip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: allIds }),
     }, `receipts-${new Date().toISOString().slice(0,10)}.zip`);
-    toast({ title: `Downloaded ${allIds.length} receipts`, variant: "success" });
+    toast({ title: `${allIds.length} Belege heruntergeladen`, variant: "success" });
   };
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-          <p className="text-sm text-muted-foreground">{total} receipts {isFetching && "· refreshing…"}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Belege</h1>
+          <p className="text-sm text-muted-foreground">{total} Belege {isFetching && "· wird aktualisiert…"}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {selectedIds.size > 0 ? (
             <>
-              <span className="text-sm text-muted-foreground">{selectedIds.size} selected</span>
+              <span className="text-sm text-muted-foreground">{selectedIds.size} ausgewählt</span>
               <Button size="sm" variant="outline" onClick={() => bulk.mutate("zip")}><Download className="h-3.5 w-3.5 mr-1" /> ZIP</Button>
-              <Button size="sm" variant="outline" onClick={() => bulk.mutate("book")}><BookCheck className="h-3.5 w-3.5 mr-1" /> Mark booked</Button>
-              <Button size="sm" variant="outline" onClick={() => bulk.mutate("reprocess")}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Reprocess</Button>
-              <Button size="sm" variant="outline" onClick={() => bulk.mutate("resync")}>Re-sync</Button>
-              <Button size="sm" variant="destructive" onClick={() => bulk.mutate("delete")}><Trash2 className="h-3.5 w-3.5 mr-1" /> Delete</Button>
+              <Button size="sm" variant="outline" onClick={() => bulk.mutate("book")}><BookCheck className="h-3.5 w-3.5 mr-1" /> Verbuchen</Button>
+              <Button size="sm" variant="outline" onClick={() => bulk.mutate("reprocess")}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Neu verarbeiten</Button>
+              <Button size="sm" variant="outline" onClick={() => bulk.mutate("resync")}>Erneut synchronisieren</Button>
+              <Button size="sm" variant="destructive" onClick={() => bulk.mutate("delete")}><Trash2 className="h-3.5 w-3.5 mr-1" /> Löschen</Button>
             </>
           ) : (
             <>
-              <Button size="sm" variant="outline" onClick={exportCsv}><FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> Export CSV</Button>
-              <Button size="sm" variant="outline" onClick={exportZipAll}><Download className="h-3.5 w-3.5 mr-1" /> Download all (ZIP)</Button>
+              <Button size="sm" variant="outline" onClick={exportCsv}><FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> CSV exportieren</Button>
+              <Button size="sm" variant="outline" onClick={exportZipAll}><Download className="h-3.5 w-3.5 mr-1" /> Alle herunterladen (ZIP)</Button>
             </>
           )}
         </div>
@@ -220,79 +227,79 @@ export default function Inbox() {
 
       <Card className="p-3 flex flex-wrap items-center gap-2">
         <Input
-          placeholder="Search filename or invoice…"
+          placeholder="Dateiname oder Rechnungsnr. suchen…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-56"
         />
         <Select value={providerId ? String(providerId) : "all"} onValueChange={(v) => setProviderId(v === "all" ? null : parseInt(v))}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Provider" /></SelectTrigger>
+          <SelectTrigger className="w-48"><SelectValue placeholder="Anbieter" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All providers</SelectItem>
+            <SelectItem value="all">Alle Anbieter</SelectItem>
             {(providers ?? []).map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.display_name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={status ?? "any"} onValueChange={(v) => setStatus(v === "any" ? undefined : v)}>
           <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">All statuses</SelectItem>
-            <SelectItem value="processed">Processed</SelectItem>
-            <SelectItem value="review_needed">Needs review</SelectItem>
-            <SelectItem value="archived">Archived</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="any">Alle Status</SelectItem>
+            <SelectItem value="processed">Verarbeitet</SelectItem>
+            <SelectItem value="review_needed">Prüfung nötig</SelectItem>
+            <SelectItem value="archived">Archiviert</SelectItem>
+            <SelectItem value="failed">Fehlgeschlagen</SelectItem>
           </SelectContent>
         </Select>
         <Select value={paymentMethod ?? "any"} onValueChange={(v) => setPaymentMethod(v === "any" ? undefined : v as PaymentMethod)}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Payment method" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Zahlungsmethode" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">All payments</SelectItem>
+            <SelectItem value="any">Alle Zahlungsarten</SelectItem>
             {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((p) => (
               <SelectItem key={p} value={p}>{PAYMENT_METHOD_LABEL[p]}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={brand ?? "any"} onValueChange={(v) => setBrand(v === "any" ? undefined : v)}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Brand" /></SelectTrigger>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Marke" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">All brands</SelectItem>
+            <SelectItem value="any">Alle Marken</SelectItem>
             <SelectItem value="leckker">Leckker</SelectItem>
             <SelectItem value="sichersatt">SicherSatt</SelectItem>
             <SelectItem value="trafficflow">TrafficFlow</SelectItem>
           </SelectContent>
         </Select>
         <Select value={booked ?? "any"} onValueChange={(v) => setBooked(v === "any" ? undefined : v)}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Booked" /></SelectTrigger>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Verbucht" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">All</SelectItem>
-            <SelectItem value="no">Open (not booked)</SelectItem>
-            <SelectItem value="yes">Booked</SelectItem>
+            <SelectItem value="any">Alle</SelectItem>
+            <SelectItem value="no">Offen (nicht verbucht)</SelectItem>
+            <SelectItem value="yes">Verbucht</SelectItem>
           </SelectContent>
         </Select>
         <Select value={datePreset} onValueChange={setDatePreset}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Date range" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Zeitraum" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="this_month">This month</SelectItem>
-            <SelectItem value="last_month">Last month</SelectItem>
-            <SelectItem value="this_quarter">This quarter</SelectItem>
-            <SelectItem value="last_quarter">Last quarter</SelectItem>
-            <SelectItem value="q1_thisyear">Q1 (this year)</SelectItem>
-            <SelectItem value="q2_thisyear">Q2 (this year)</SelectItem>
-            <SelectItem value="q3_thisyear">Q3 (this year)</SelectItem>
-            <SelectItem value="q4_thisyear">Q4 (this year)</SelectItem>
-            <SelectItem value="ytd">Year to date</SelectItem>
-            <SelectItem value="this_year">This year</SelectItem>
-            <SelectItem value="last_year">Last year</SelectItem>
-            <SelectItem value="q1_lastyear">Q1 (last year)</SelectItem>
-            <SelectItem value="q2_lastyear">Q2 (last year)</SelectItem>
-            <SelectItem value="q3_lastyear">Q3 (last year)</SelectItem>
-            <SelectItem value="q4_lastyear">Q4 (last year)</SelectItem>
+            <SelectItem value="this_month">Dieser Monat</SelectItem>
+            <SelectItem value="last_month">Letzter Monat</SelectItem>
+            <SelectItem value="this_quarter">Dieses Quartal</SelectItem>
+            <SelectItem value="last_quarter">Letztes Quartal</SelectItem>
+            <SelectItem value="q1_thisyear">Q1 (dieses Jahr)</SelectItem>
+            <SelectItem value="q2_thisyear">Q2 (dieses Jahr)</SelectItem>
+            <SelectItem value="q3_thisyear">Q3 (dieses Jahr)</SelectItem>
+            <SelectItem value="q4_thisyear">Q4 (dieses Jahr)</SelectItem>
+            <SelectItem value="ytd">Jahr bis heute</SelectItem>
+            <SelectItem value="this_year">Dieses Jahr</SelectItem>
+            <SelectItem value="last_year">Letztes Jahr</SelectItem>
+            <SelectItem value="q1_lastyear">Q1 (letztes Jahr)</SelectItem>
+            <SelectItem value="q2_lastyear">Q2 (letztes Jahr)</SelectItem>
+            <SelectItem value="q3_lastyear">Q3 (letztes Jahr)</SelectItem>
+            <SelectItem value="q4_lastyear">Q4 (letztes Jahr)</SelectItem>
           </SelectContent>
         </Select>
-        <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDatePreset(""); }} className="w-36" title="From" />
-        <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setDatePreset(""); }} className="w-36" title="To" />
+        <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDatePreset(""); }} className="w-36" title="Von" />
+        <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setDatePreset(""); }} className="w-36" title="Bis" />
         {(search || providerId || status || paymentMethod || brand || booked || dateFrom || dateTo) && (
           <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setProviderId(null); setStatus(undefined); setPaymentMethod(undefined); setBrand(undefined); setBooked(undefined); setDateFrom(""); setDateTo(""); setDatePreset(""); }}>
-            <FilterX className="h-3.5 w-3.5 mr-1" /> Clear
+            <FilterX className="h-3.5 w-3.5 mr-1" /> Zurücksetzen
           </Button>
         )}
       </Card>
@@ -302,14 +309,14 @@ export default function Inbox() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-8"></TableHead>
-              <TableHead title="Date of issue (Rechnungsdatum)">Issue date</TableHead>
-              <TableHead>Provider</TableHead>
-              <TableHead>Brand</TableHead>
-              <TableHead>Filename</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Payment</TableHead>
+              <TableHead title="Rechnungsdatum / Date of issue">Rechnungsdatum</TableHead>
+              <TableHead>Anbieter</TableHead>
+              <TableHead>Marke</TableHead>
+              <TableHead>Dateiname</TableHead>
+              <TableHead className="text-right">Betrag</TableHead>
+              <TableHead>Zahlung</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Booked</TableHead>
+              <TableHead>Verbucht</TableHead>
               <TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
@@ -343,13 +350,13 @@ export default function Inbox() {
                 <TableCell className="text-right whitespace-nowrap">{fmtMoney(r.amount, r.currency)}</TableCell>
                 <TableCell><PaymentBadge pm={r.payment_method} /></TableCell>
                 <TableCell><StatusBadge status={r.status} /></TableCell>
-                <TableCell>{r.booked_at ? <Badge variant="success">booked</Badge> : <span className="text-muted-foreground text-xs">open</span>}</TableCell>
+                <TableCell>{r.booked_at ? <Badge variant="success">verbucht</Badge> : <span className="text-muted-foreground text-xs">offen</span>}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-0.5">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" title="Preview" onClick={() => { setFocusIndex(idx); setOpenId(r.id); }}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" title="Vorschau" onClick={() => { setFocusIndex(idx); setOpenId(r.id); }}>
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
-                    <a href={`${apiBase}/receipts/${r.id}/file`} download={r.filename} title="Download">
+                    <a href={`${apiBase}/receipts/${r.id}/file`} download={r.filename} title="Herunterladen">
                       <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="h-3.5 w-3.5" /></Button>
                     </a>
                   </div>
@@ -357,7 +364,7 @@ export default function Inbox() {
               </TableRow>
             ))}
             {!items.length && (
-              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">No receipts match the current filters</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">Keine Belege entsprechen den Filtern</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -365,16 +372,16 @@ export default function Inbox() {
 
       <div className="flex items-center justify-between text-sm flex-wrap gap-2">
         <div className="text-muted-foreground">
-          Page {page} of {totalPages} · {total} total
+          Seite {page} von {totalPages} · {total} insgesamt
           {pageTotal !== null && (
             <span className="ml-3">
-              Page sum: <span className="font-mono text-foreground">{fmtMoney(pageTotal, items[0]?.currency || "CHF")}</span>
+              Seitensumme: <span className="font-mono text-foreground">{fmtMoney(pageTotal, items[0]?.currency || "CHF")}</span>
             </span>
           )}
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Zurück</Button>
+          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Weiter</Button>
         </div>
       </div>
 
@@ -385,17 +392,17 @@ export default function Inbox() {
 
 function StatusBadge({ status }: { status: Receipt["status"] }) {
   const map: Record<Receipt["status"], { variant: any; label: string }> = {
-    processing: { variant: "secondary", label: "Processing" },
-    processed: { variant: "success", label: "Processed" },
-    review_needed: { variant: "warning", label: "Review" },
-    archived: { variant: "outline", label: "Archived" },
-    failed: { variant: "destructive", label: "Failed" },
+    processing: { variant: "secondary", label: "Verarbeitung" },
+    processed: { variant: "success", label: "Verarbeitet" },
+    review_needed: { variant: "warning", label: "Prüfung" },
+    archived: { variant: "outline", label: "Archiviert" },
+    failed: { variant: "destructive", label: "Fehler" },
   };
   const c = map[status];
   return <Badge variant={c.variant}>{c.label}</Badge>;
 }
 function LayerBadge({ layer }: { layer: Receipt["classification_layer"] }) {
-  const label = { "1": "Rules", "2": "LLM", "3": "Review", "manual": "Manual" }[layer];
+  const label = { "1": "Regeln", "2": "KI", "3": "Prüfung", "manual": "Manuell" }[layer];
   return <Badge variant="outline">{label}</Badge>;
 }
 function PaymentBadge({ pm }: { pm: PaymentMethod }) {

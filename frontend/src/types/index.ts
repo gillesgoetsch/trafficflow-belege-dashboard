@@ -23,13 +23,21 @@ export type PaymentMethod =
   | "unknown";
 
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
-  credit_card: "Credit card",
-  bank_transfer: "Bank transfer",
+  credit_card: "Kreditkarte",
+  bank_transfer: "Banküberweisung",
   twint: "Twint",
-  cash: "Cash",
+  cash: "Bargeld",
   paypal: "PayPal",
-  other: "Other",
-  unknown: "Unknown",
+  other: "Sonstige",
+  unknown: "Unbekannt",
+};
+
+export type DocumentType = "receipt" | "document" | "upcoming" | "other";
+export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
+  receipt: "Rechnung/Beleg",
+  document: "Dokument",
+  upcoming: "Vorabrechnung",
+  other: "Sonstige",
 };
 
 export interface User {
@@ -128,6 +136,7 @@ export interface Receipt {
   status: ReceiptStatus;
   payment_method: PaymentMethod;
   brand: string | null;
+  document_type: DocumentType;
   notes: string | null;
   vat_rate: string | null;
   vat_amount: string | null;

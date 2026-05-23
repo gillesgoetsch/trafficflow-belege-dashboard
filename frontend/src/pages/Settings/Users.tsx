@@ -29,19 +29,21 @@ export default function Users() {
 
   const del = useMutation({
     mutationFn: (id: number) => api(`/users/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); toast({ title: "Deleted" }); },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); toast({ title: "Gelöscht" }); },
+    onError: (e: any) => toast({ title: "Fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
+
+  const roleLabel: Record<UserRow["role"], string> = { admin: "Admin", accountant: "Buchhalter" };
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-        <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Add user</Button>
+        <h1 className="text-2xl font-semibold tracking-tight">Benutzer</h1>
+        <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Benutzer hinzufügen</Button>
       </header>
       <p className="text-sm text-muted-foreground">
-        Admin users can manage everything. Accountant users see only the organizations you grant them
-        — they can browse receipts, edit metadata, mark booked, and export downloads/CSV.
+        Admin-Benutzer können alles verwalten. Buchhalter-Benutzer sehen nur die ihnen zugeordneten Firmen
+        — sie können Belege ansehen, Daten bearbeiten, verbuchen und Downloads/CSV exportieren.
       </p>
 
       <Card>
@@ -51,23 +53,23 @@ export default function Users() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium">{u.email}</div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
-                  <Badge variant={u.role === "admin" ? "default" : "secondary"}>{u.role}</Badge>
-                  {!u.is_active && <Badge variant="destructive">disabled</Badge>}
+                  <Badge variant={u.role === "admin" ? "default" : "secondary"}>{roleLabel[u.role]}</Badge>
+                  {!u.is_active && <Badge variant="destructive">deaktiviert</Badge>}
                   {u.role !== "admin" && (
                     <>
                       <span>·</span>
                       {u.organization_ids.length === 0
-                        ? <span className="text-warning">No org access</span>
-                        : <span>Orgs: {u.organization_ids.map((id) => orgs?.find((o) => o.id === id)?.name || `#${id}`).join(", ")}</span>}
+                        ? <span className="text-warning">Kein Firmen-Zugang</span>
+                        : <span>Firmen: {u.organization_ids.map((id) => orgs?.find((o) => o.id === id)?.name || `#${id}`).join(", ")}</span>}
                     </>
                   )}
                 </div>
               </div>
               <Button size="icon" variant="ghost" onClick={() => setEditing(u)}><Edit3 className="h-4 w-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => confirm(`Delete ${u.email}?`) && del.mutate(u.id)}><Trash2 className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => confirm(`${u.email} wirklich löschen?`) && del.mutate(u.id)}><Trash2 className="h-4 w-4" /></Button>
             </div>
           ))}
-          {!users?.length && <div className="p-6 text-center text-muted-foreground">No users.</div>}
+          {!users?.length && <div className="p-6 text-center text-muted-foreground">Keine Benutzer.</div>}
         </div>
       </Card>
 
@@ -100,36 +102,36 @@ function UserDialog({ user, orgs, onClose, onSaved }: {
         if (password) body.password = password;
         return api(`/users/${user.id}`, { method: "PATCH", body });
       }
-      if (!password) throw new Error("Password required");
+      if (!password) throw new Error("Passwort erforderlich");
       return api("/users", { method: "POST", body: { email, password, role, organization_ids: Array.from(orgIds) } });
     },
-    onSuccess: () => { onSaved(); toast({ title: "Saved", variant: "success" }); },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    onSuccess: () => { onSaved(); toast({ title: "Gespeichert", variant: "success" }); },
+    onError: (e: any) => toast({ title: "Fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>{user ? "Edit user" : "Add user"}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{user ? "Benutzer bearbeiten" : "Benutzer hinzufügen"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
-          <div><Label>Email</Label><Input type="email" value={email} disabled={!!user} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div><Label>E-Mail</Label><Input type="email" value={email} disabled={!!user} onChange={(e) => setEmail(e.target.value)} /></div>
           <div>
-            <Label>{user ? "New password (leave blank to keep)" : "Password"}</Label>
+            <Label>{user ? "Neues Passwort (leer lassen, um es zu behalten)" : "Passwort"}</Label>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <div>
-            <Label>Role</Label>
+            <Label>Rolle</Label>
             <Select value={role} onValueChange={(v) => setRole(v as any)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Admin — full access</SelectItem>
-                <SelectItem value="accountant">Accountant — selected orgs only</SelectItem>
+                <SelectItem value="admin">Admin — voller Zugriff</SelectItem>
+                <SelectItem value="accountant">Buchhalter — nur ausgewählte Firmen</SelectItem>
               </SelectContent>
             </Select>
           </div>
           {role === "accountant" && (
             <div>
-              <Label>Allowed organizations</Label>
+              <Label>Erlaubte Firmen</Label>
               <div className="space-y-1 mt-1">
                 {orgs.map((o) => (
                   <label key={o.id} className="flex items-center gap-2 text-sm">
@@ -149,12 +151,12 @@ function UserDialog({ user, orgs, onClose, onSaved }: {
           )}
           {user && (
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Active
+              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Aktiv
             </label>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={() => save.mutate()}>Save</Button>
+            <Button variant="outline" onClick={onClose}>Abbrechen</Button>
+            <Button onClick={() => save.mutate()}>Speichern</Button>
           </div>
         </div>
       </DialogContent>

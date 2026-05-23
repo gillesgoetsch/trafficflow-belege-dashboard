@@ -26,51 +26,91 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-_PROMPT = """You are extracting structured metadata from a receipt / invoice / Rechnung for an SMB bookkeeping system.
+_PROMPT = """You are extracting structured metadata from a financial document for an SMB
+bookkeeping system. The document can be one of several types — classify it first.
 
-Read the document carefully and return STRICT JSON with this exact shape:
+Return STRICT JSON in this exact shape:
 
 {
-  "is_receipt": true | false,
-  "vendor": "Vendor / company name issuing the invoice" | null,
-  "vendor_slug": "lowercase-kebab-slug for the vendor" | null,
-  "customer_hint": "If the customer/recipient/billing name on the document mentions an org, brand, or person, return it verbatim. Otherwise null.",
-  "document_date": "YYYY-MM-DD" | null,   // DATE OF ISSUE (Rechnungsdatum / Issue Date / Date of Invoice)
-  "due_date": "YYYY-MM-DD" | null,         // when payment is OWED (Fälligkeitsdatum / Due Date / Payable by)
-  "total_amount": "1234.56" | null,        // total including VAT, decimal point, NO thousands separator
-  "currency": "CHF" | "EUR" | "USD" | "GBP" | ...,
-  "vat_rate": "8.1" | "2.6" | "0" | null,  // percent
+  "document_type": "receipt" | "document" | "upcoming" | "other",
+  "is_receipt": true | false,                    // shortcut: true iff document_type=="receipt"
+  "vendor": "Vendor / company that issued it" | null,
+  "vendor_slug": "lowercase-kebab-slug" | null,
+  "customer_hint": "If the BILLED TO / Rechnung an / customer line names an org/brand/person, return it verbatim. Otherwise null.",
+  "document_date": "YYYY-MM-DD" | null,           // ISSUE DATE — see rules below
+  "due_date": "YYYY-MM-DD" | null,                // PAYMENT DUE — see rules below
+  "total_amount": "1234.56" | null,               // gross / Brutto / total-incl-VAT, dot decimal
+  "currency": "CHF" | "EUR" | "USD" | "GBP" | "...",
+  "vat_rate": "8.1" | "2.6" | "0" | null,
   "vat_amount": "12.34" | null,
   "invoice_number": "INV-..." | null,
   "language": "de" | "en" | "fr" | "it" | null,
-  "notes": "one-line plain summary, e.g. 'Meta Ads subscription Apr 2026'"
+  "notes": "one-line plain summary"
 }
 
-CRITICAL rules:
-- document_date is the DATE OF ISSUE — the day the invoice was created/issued. Labels:
-  "Rechnungsdatum", "Invoice Date", "Issue Date", "Date of issue", "Datum",
-  "Erstellt am", "Date", "Bill Date". This is the field that drives accounting periods.
-- due_date is the date PAYMENT IS DUE. Labels: "Fälligkeitsdatum", "Fällig am",
-  "Due Date", "Payment Due", "Zahlbar bis", "Date d'échéance".
-  Many receipts (already-paid CC charges, instant transactions) have NO due date —
-  return null in that case. Do not invent one. Do not copy the issue date here.
-- If you only see ONE date on the document and it's labeled as an issue/invoice date
-  (or unlabeled but clearly the invoice header date), put it in document_date and
-  leave due_date null.
-- total_amount is the GROSS / Brutto / total-including-VAT amount the customer paid.
-- If you see both Netto and Brutto, return Brutto. If only one total is given, return that.
-- Ignore stray numbers that appear inside the vendor's product names (e.g. "Porsche 911", "Boeing 747").
-- The decimal separator in the OUTPUT must be a dot. Convert "119,10" → "119.10".
-- Do not include the currency symbol in total_amount.
-- If the document is not a receipt/invoice (marketing email, contract, shipping confirmation
-  without amounts), set is_receipt to false and leave other fields null.
+------------------------------------------------------------------
+DOCUMENT TYPE — pick exactly ONE
+------------------------------------------------------------------
+- "receipt"  : a paid OR payable invoice / Rechnung / Quittung / Beleg with a real
+               total amount and a real issue date. Most uploads are this.
+- "upcoming" : an invoice the vendor has issued IN ADVANCE for a future billing
+               period. Look for labels: "Upcoming - not due yet", "Status: Upcoming",
+               "Vorabrechnung", "Preview invoice", "Draft", "Will be charged on...".
+               These usually appear when subscription tools (Notion, Adobe, etc.)
+               send next month's invoice ahead of the actual charge. Keep
+               document_date as printed on the invoice; the accountant filters
+               these out when needed.
+- "document" : a legitimate non-invoice document the user wants archived:
+               packing slips, delivery confirmations, attestations, contracts,
+               certificates, receipt-without-amount (e.g. Twint screenshot that
+               you can't OCR a number from). Set total_amount to null if you
+               can't read it.
+- "other"    : truly junk — marketing email PDFs without a real bill, gibberish
+               scans, unrelated files. Set total_amount and dates to null.
 
+------------------------------------------------------------------
+DATE RULES — most common mistake area, read carefully
+------------------------------------------------------------------
+document_date = DATE OF ISSUE (Rechnungsdatum / Invoice Date / Issue Date /
+"Erstellt am" / "Datum"). It's what gets printed at the TOP of the invoice
+as the document's own date. This drives the accounting period.
+
+due_date = DATE PAYMENT IS DUE (Fälligkeitsdatum / Fällig am / Due Date /
+Payment Due / Zahlbar bis). On the document this is usually a SEPARATE labeled
+field, often a few days or a month after the issue date.
+
+CRITICAL date rules:
+1. NEVER copy document_date into due_date. If only ONE date is visible and it
+   isn't explicitly labeled "Due", put it in document_date and leave due_date
+   null.
+2. Many receipts have NO due date because they were already paid (credit-card
+   charges, instant Twint, Stripe receipts). In that case → due_date = null.
+3. Labels matter more than position. "Bill Date" usually = issue date.
+   "Service Period" / "Subscription Period" date ranges are NOT the issue date.
+4. For Twint / PostFinance / e-payment screenshots: look for "Datum",
+   "ausgeführt am", or a date stamped on the receipt. If you can't read it
+   confidently, return null — DO NOT use today's date.
+5. For bank-transfer scans where you can read a date stamp from the bank or
+   merchant on the document, use that. If only the filename has a date and
+   the image itself has none, return null.
+
+------------------------------------------------------------------
+AMOUNT RULES
+------------------------------------------------------------------
+- total_amount = GROSS / Brutto / total-including-VAT.
+- If both Netto and Brutto are shown, return Brutto.
+- Ignore numbers inside product names: "Porsche 911", "Boeing 747", "iPhone 13".
+- Decimal point in OUTPUT: convert "119,10" → "119.10".
+- Do NOT include currency symbol in the amount string.
+
+------------------------------------------------------------------
 Return ONLY the JSON object — no preamble, no markdown fences."""
 
 
 @dataclass
 class ClaudeReceipt:
     is_receipt: bool
+    document_type: str           # receipt | document | upcoming | other
     vendor: str | None
     vendor_slug: str | None
     customer_hint: str | None
@@ -111,8 +151,13 @@ def _parse_date(v: str | None) -> str | None:
 
 
 def _coerce(data: dict) -> ClaudeReceipt:
+    dt = (data.get("document_type") or "").lower()
+    if dt not in ("receipt", "document", "upcoming", "other"):
+        # Fall back from legacy is_receipt boolean
+        dt = "receipt" if data.get("is_receipt") else "other"
     return ClaudeReceipt(
-        is_receipt=bool(data.get("is_receipt")),
+        is_receipt=(dt == "receipt"),
+        document_type=dt,
         vendor=data.get("vendor"),
         vendor_slug=data.get("vendor_slug"),
         customer_hint=data.get("customer_hint"),
@@ -172,10 +217,10 @@ async def _vision_fallback_pdf(pdf_path: Path, client: AsyncAnthropic) -> Claude
                 await browser.close()
     except Exception as e:  # noqa: BLE001
         logger.warning("claude_extract.vision_render_failed", path=str(pdf_path), error=str(e))
-        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, None, {"error": "render_failed"})
+        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "render_failed"})
 
     if not png_bytes:
-        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_png"})
+        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_png"})
 
     msg = await client.messages.create(
         model=settings.ocr_model,
@@ -197,7 +242,7 @@ async def _vision_fallback_pdf(pdf_path: Path, client: AsyncAnthropic) -> Claude
 
 async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
     if not settings.anthropic_api_key:
-        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
+        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
     pdf_bytes = pdf_path.read_bytes()
     b64 = base64.standard_b64encode(pdf_bytes).decode()
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -229,7 +274,7 @@ async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
 
 async def extract_from_image(image_path: Path) -> ClaudeReceipt:
     if not settings.anthropic_api_key:
-        return ClaudeReceipt(False, None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
+        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
     raw = image_path.read_bytes()
     b64 = base64.standard_b64encode(raw).decode()
     ext = image_path.suffix.lower()

@@ -81,6 +81,13 @@ class EmailMessageStatus(str, enum.Enum):
     not_a_receipt = "not_a_receipt"
 
 
+class DocumentType(str, enum.Enum):
+    receipt = "receipt"     # paid or payable invoice — accounting flow
+    document = "document"   # legit non-invoice (packing slip, attestation, contract)
+    upcoming = "upcoming"   # invoice issued for a future billing date (Notion etc)
+    other = "other"         # uncategorizable
+
+
 class PaymentMethod(str, enum.Enum):
     credit_card = "credit_card"
     bank_transfer = "bank_transfer"
@@ -321,6 +328,14 @@ class Receipt(Base, TimestampMixin):
     vat_amount: Mapped[float | None] = mapped_column(Numeric(14, 2))
     booked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     bookkeeping_ref: Mapped[str | None] = mapped_column(String(128))
+
+    document_type: Mapped[DocumentType] = mapped_column(
+        Enum(DocumentType, name="document_type"),
+        default=DocumentType.receipt,
+        server_default="receipt",
+        nullable=False,
+        index=True,
+    )
 
     raw_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     processing_log: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
