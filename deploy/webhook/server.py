@@ -70,15 +70,19 @@ async def _do_deploy(reason: str) -> dict:
         result = {"status": "running", "ts": datetime.now(timezone.utc).isoformat(), "reason": reason, "log": []}
         last_status.update(result)
 
+        # IMPORTANT: pin the project name to "belege" — webhook runs from /repo
+        # so without -p it would derive a project named "repo" and create a
+        # parallel set of repo-* images / containers, never touching the actual
+        # running belege-* services. Lost half a day to that bug.
+        compose = ["docker", "compose", "-p", "belege", "--env-file", ".env"]
         steps = [
             ["git", "fetch", "--prune", "--all"],
             ["git", "reset", "--hard", f"origin/{BRANCH}"],
-            ["docker", "compose", "--env-file", ".env", "pull"],
-            # `--pull` re-pulls upstream base images so we don't drift; `--no-cache`
-            # avoids the recurring stale-COPY-layer bug we hit a few times where
-            # changed source files weren't picked up.
-            ["docker", "compose", "--env-file", ".env", "build", "--pull", "--no-cache", *COMPOSE_SERVICES],
-            ["docker", "compose", "--env-file", ".env", "up", "-d", "--no-deps", "--force-recreate", *COMPOSE_SERVICES],
+            [*compose, "pull"],
+            # --pull re-pulls upstream base images; --no-cache avoids the
+            # COPY-layer-cached-when-source-changed bug.
+            [*compose, "build", "--pull", "--no-cache", *COMPOSE_SERVICES],
+            [*compose, "up", "-d", "--no-deps", "--force-recreate", *COMPOSE_SERVICES],
             ["docker", "image", "prune", "-f"],
         ]
         ok = True
