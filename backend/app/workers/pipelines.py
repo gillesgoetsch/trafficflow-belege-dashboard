@@ -465,6 +465,17 @@ async def process_uploaded_receipt(ctx, receipt_id: int):
             "customer_hint": getattr(ext, "customer_hint", None),
         }
 
+        # API unavailable (credits, auth, render failure) — do NOT touch existing
+        # receipt data. Log and return so the row keeps its current values.
+        if ext and getattr(ext, "document_type", "") == "__unavailable__":
+            log_entry["event"] = "claude_extract_unavailable"
+            log_entry["error"] = (ext.raw or {}).get("error")
+            log = list(r.processing_log or [])
+            log.append(log_entry)
+            r.processing_log = log
+            await db.commit()
+            return {"ok": False, "reason": "api_unavailable"}
+
         # Persist the doc-type classification regardless of receipt-ness
         if ext and getattr(ext, "document_type", None):
             from app.db.models import DocumentType

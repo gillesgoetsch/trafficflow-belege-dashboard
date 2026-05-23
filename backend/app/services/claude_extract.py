@@ -227,10 +227,12 @@ async def _vision_fallback_pdf(pdf_path: Path, client: AsyncAnthropic) -> Claude
                 await browser.close()
     except Exception as e:  # noqa: BLE001
         logger.warning("claude_extract.vision_render_failed", path=str(pdf_path), error=str(e))
-        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "render_failed"})
+        # Signal "extraction unavailable" — caller should NOT overwrite existing
+        # receipt data with junk.
+        return ClaudeReceipt(False, "__unavailable__", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "render_failed"})
 
     if not png_bytes:
-        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_png"})
+        return ClaudeReceipt(False, "__unavailable__", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_png"})
 
     msg = await client.messages.create(
         model=settings.ocr_model,
@@ -252,7 +254,7 @@ async def _vision_fallback_pdf(pdf_path: Path, client: AsyncAnthropic) -> Claude
 
 async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
     if not settings.anthropic_api_key:
-        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
+        return ClaudeReceipt(False, "__unavailable__", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
     pdf_bytes = pdf_path.read_bytes()
     b64 = base64.standard_b64encode(pdf_bytes).decode()
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -276,7 +278,12 @@ async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
             return result
         logger.info("claude_extract.pdf_empty_falling_back_to_vision", path=str(pdf_path))
     except Exception as e:  # noqa: BLE001
-        logger.warning("claude_extract.pdf_failed_falling_back_to_vision", path=str(pdf_path), error=str(e))
+        msg = str(e)
+        logger.warning("claude_extract.pdf_failed_falling_back_to_vision", path=str(pdf_path), error=msg)
+        # Hard fail (credits exhausted, auth, server outage) — signal unavailable
+        # so the worker keeps existing receipt data instead of wiping it.
+        if any(k in msg.lower() for k in ("credit balance", "billing", "401", "403", "overloaded")):
+            return ClaudeReceipt(False, "__unavailable__", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "api_unavailable", "detail": msg[:200]})
 
     # Render to image and try Vision (handles image-only scanned PDFs)
     return await _vision_fallback_pdf(pdf_path, client)
@@ -284,26 +291,30 @@ async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
 
 async def extract_from_image(image_path: Path) -> ClaudeReceipt:
     if not settings.anthropic_api_key:
-        return ClaudeReceipt(False, "other", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
+        return ClaudeReceipt(False, "__unavailable__", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "no_api_key"})
     raw = image_path.read_bytes()
     b64 = base64.standard_b64encode(raw).decode()
     ext = image_path.suffix.lower()
     media = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
              ".webp": "image/webp", ".gif": "image/gif"}.get(ext, "image/jpeg")
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-    msg = await client.messages.create(
-        model=settings.ocr_model,
-        max_tokens=900,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": media, "data": b64}},
-                    {"type": "text", "text": _PROMPT},
-                ],
-            }
-        ],
-    )
+    try:
+        msg = await client.messages.create(
+            model=settings.ocr_model,
+            max_tokens=900,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": media, "data": b64}},
+                        {"type": "text", "text": _PROMPT},
+                    ],
+                }
+            ],
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("claude_extract.image_failed", path=str(image_path), error=str(e))
+        return ClaudeReceipt(False, "__unavailable__", None, None, None, None, None, None, None, None, None, None, None, None, {"error": "api_unavailable", "detail": str(e)[:200]})
     text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
     return _coerce(_parse_response(text))
 
