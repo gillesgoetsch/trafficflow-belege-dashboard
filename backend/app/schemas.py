@@ -292,6 +292,10 @@ class ReviewItemOut(BaseModel):
     suggested_provider_slug: str | None
     confidence: float
     reason: str | None
+    amount: Decimal | None = None
+    currency: str | None = None
+    payment_method: str | None = None
+    brand: str | None = None
 
 
 class ReviewDecision(BaseModel):

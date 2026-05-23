@@ -165,6 +165,10 @@ export interface ReviewItem {
   suggested_provider_slug: string | null;
   confidence: number;
   reason: string | null;
+  amount: string | null;
+  currency: string | null;
+  payment_method: string | null;
+  brand: string | null;
 }
 
 export interface DashboardKPIs {

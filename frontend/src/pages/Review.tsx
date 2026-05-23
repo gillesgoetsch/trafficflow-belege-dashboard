@@ -7,8 +7,8 @@ import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { fmtRelative } from "../lib/format";
-import { Check, X, ArrowRight, ListChecks } from "lucide-react";
+import { fmtMoney, fmtRelative } from "../lib/format";
+import { Check, X, Eye, ListChecks } from "lucide-react";
 import { ReceiptDetailPanel } from "../components/receipts/ReceiptDetailPanel";
 import { toast } from "../components/ui/toaster";
 
@@ -64,14 +64,28 @@ export default function Review() {
           <Card key={it.receipt_id} className={focus === idx ? "ring-2 ring-primary/40" : ""}>
             <div className="p-3 flex items-center gap-3">
               <div className="flex-1 min-w-0" onClick={() => { setFocus(idx); setOpenId(it.receipt_id); }} role="button">
-                <div className="text-sm font-medium truncate">{it.subject || "(no subject)"}</div>
-                <div className="text-xs text-muted-foreground truncate">{it.sender} · {fmtRelative(it.received_at)}</div>
+                <div className="text-sm font-medium truncate flex items-center gap-2">
+                  <span className="truncate">{it.subject || "(no subject)"}</span>
+                  {it.amount && (
+                    <span className="text-muted-foreground font-normal">·</span>
+                  )}
+                  {it.amount && (
+                    <span className="text-foreground font-mono text-xs">{fmtMoney(it.amount, it.currency)}</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
+                  <span>{it.sender || "—"}</span>
+                  <span>·</span>
+                  <span>{fmtRelative(it.received_at)}</span>
+                  {it.brand && <><span>·</span><Badge variant="outline" className="text-[10px] py-0">{it.brand}</Badge></>}
+                </div>
               </div>
               {it.suggested_provider_slug && (
                 <Badge variant="secondary" className="hidden sm:inline-flex">{it.suggested_provider_slug} · {Math.round(it.confidence * 100)}%</Badge>
               )}
               {it.reason && <Badge variant="warning" className="hidden md:inline-flex">{it.reason}</Badge>}
               <div className="flex items-center gap-1">
+                <Button size="icon" variant="ghost" onClick={() => { setFocus(idx); setOpenId(it.receipt_id); }} aria-label="view"><Eye className="h-4 w-4" /></Button>
                 <ProviderPicker
                   value={it.suggested_provider_id ?? null}
                   providers={providers ?? []}

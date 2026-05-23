@@ -49,14 +49,23 @@ async def list_review_queue(
         if r.provider_id:
             prov = await db.get(Provider, r.provider_id)
             prov_slug = prov.slug if prov else None
+        # For email receipts: subject + sender. For uploads: filename + source.
+        subject = (msg.subject if msg else None) or r.filename
+        sender = ((msg.sender_email or msg.sender_name) if msg else None) or (
+            f"upload · {r.payment_method.value if hasattr(r.payment_method, 'value') else r.payment_method}"
+        )
         items.append(ReviewItemOut(
             receipt_id=r.id,
-            subject=(msg.subject if msg else None),
-            sender=((msg.sender_email or msg.sender_name) if msg else None),
-            received_at=r.received_at,
+            subject=subject,
+            sender=sender,
+            received_at=r.received_at or r.created_at,
             suggested_provider_id=r.provider_id,
             suggested_provider_slug=prov_slug,
             confidence=float(r.confidence or 0),
+            amount=r.amount,
+            currency=r.currency,
+            payment_method=r.payment_method.value if hasattr(r.payment_method, "value") else str(r.payment_method),
+            brand=r.brand,
             reason=r.review_reason,
         ))
     return items
