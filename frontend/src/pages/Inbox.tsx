@@ -74,6 +74,11 @@ export default function Inbox() {
   });
 
   const items = data?.items ?? [];
+  const pageTotal = useMemo(() => {
+    if (!items.length) return null;
+    const sum = items.reduce((acc, r) => acc + (r.amount ? parseFloat(r.amount) : 0), 0);
+    return sum > 0 ? sum : null;
+  }, [items]);
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -324,8 +329,15 @@ export default function Inbox() {
         </Table>
       </Card>
 
-      <div className="flex items-center justify-between text-sm">
-        <div className="text-muted-foreground">Page {page} of {totalPages}</div>
+      <div className="flex items-center justify-between text-sm flex-wrap gap-2">
+        <div className="text-muted-foreground">
+          Page {page} of {totalPages} · {total} total
+          {pageTotal !== null && (
+            <span className="ml-3">
+              Page sum: <span className="font-mono text-foreground">{fmtMoney(pageTotal, items[0]?.currency || "CHF")}</span>
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
           <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
