@@ -192,8 +192,12 @@ def _coerce(data: dict) -> ClaudeReceipt:
 
 
 def _parse_response(text: str) -> dict:
-    """Extract the JSON object from the model's reply. Grammar-constrained
-    output is already strict JSON but we still tolerate stray whitespace.
+    """Extract the JSON object from the model's reply.
+
+    Handles three shapes:
+      1. Clean JSON object (with or without ```json fence)
+      2. Truncated JSON — model hit max_tokens mid-output. We salvage every
+         complete `"key": value` pair before the cut.
     """
     if not text:
         return {}
@@ -202,17 +206,39 @@ def _parse_response(text: str) -> dict:
         text = text.strip("`")
         if text.lower().startswith("json"):
             text = text[4:].lstrip()
+
+    # First try strict parse
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
     m = re.search(r"\{[\s\S]*\}", text)
-    if not m:
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    # Salvage truncated JSON — find the leading `{` and parse pair-by-pair
+    start = text.find("{")
+    if start < 0:
         return {}
-    try:
-        return json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return {}
+    body = text[start + 1:]
+    out: dict[str, Any] = {}
+    # Greedy match of `"key": value` where value is a string, number, true/false/null
+    pair_re = re.compile(
+        r'"([^"\\]+)"\s*:\s*(?:"((?:[^"\\]|\\.)*)"|(-?\d+(?:\.\d+)?)|(true|false|null))'
+    )
+    for m in pair_re.finditer(body):
+        key = m.group(1)
+        if m.group(2) is not None:
+            out[key] = m.group(2)
+        elif m.group(3) is not None:
+            out[key] = m.group(3)  # keep numeric as string; downstream coerces
+        else:
+            tok = m.group(4)
+            out[key] = {"true": True, "false": False, "null": None}.get(tok)
+    return out
 
 
 def _read_pdf_text(path: Path, max_chars: int = 14000) -> str:
@@ -275,15 +301,15 @@ async def _extract_from_text(text: str, source: str = "") -> ClaudeReceipt:
     if model is None:
         return _unavailable("model_not_loaded")
 
-    prompt = _PROMPT_HEAD + text + "\n\nReturn the JSON object only:\n"
+    prompt = _PROMPT_HEAD + text + "\n\nReturn the JSON object only — keep it compact (no extra whitespace):\n"
     try:
         result = model.create_completion(
             prompt=prompt,
-            max_tokens=600,
+            max_tokens=1200,
             temperature=0.0,
             top_p=0.95,
-            grammar=None,  # JSON grammar prepared but llama-cpp-python takes a Grammar obj; we parse leniently
-            stop=["```", "\n\n\n"],
+            grammar=None,
+            stop=["```"],  # don't stop on whitespace — model uses pretty-print formatting
         )
         text_out = result["choices"][0]["text"] if "choices" in result else ""
     except Exception as e:  # noqa: BLE001
