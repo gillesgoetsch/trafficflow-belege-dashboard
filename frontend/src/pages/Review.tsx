@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { useUi } from "../store/ui";
-import type { Provider, ReviewItem } from "../types";
+import type { Organization, Provider, ReviewItem } from "../types";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -23,6 +23,7 @@ export default function Review() {
     queryFn: () => api("/review", { query: { organization_id: orgId ?? undefined } }),
   });
   const { data: providers } = useQuery<Provider[]>({ queryKey: ["providers"], queryFn: () => api("/providers") });
+  const { data: orgs } = useQuery<Organization[]>({ queryKey: ["orgs"], queryFn: () => api("/organizations") });
 
   const decide = useMutation({
     mutationFn: ({ id, body }: { id: number; body: any }) =>
@@ -88,6 +89,11 @@ export default function Review() {
               {it.reason && <Badge variant="warning" className="hidden md:inline-flex">{it.reason}</Badge>}
               <div className="flex items-center gap-1">
                 <Button size="icon" variant="ghost" onClick={() => { setFocus(idx); setOpenId(it.receipt_id); }} aria-label="view"><Eye className="h-4 w-4" /></Button>
+                <OrgPicker
+                  value={it.organization_id}
+                  orgs={orgs ?? []}
+                  onPick={(oid) => decide.mutate({ id: it.receipt_id, body: { action: "reassign", organization_id: oid } })}
+                />
                 <ProviderPicker
                   value={it.suggested_provider_id ?? null}
                   providers={providers ?? []}
@@ -122,6 +128,17 @@ function ProviderPicker({ value, providers, onPick }: { value: number | null; pr
       <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Anbieter zuweisen…" /></SelectTrigger>
       <SelectContent>
         {providers.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.display_name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function OrgPicker({ value, orgs, onPick }: { value: number; orgs: Organization[]; onPick: (id: number) => void }) {
+  return (
+    <Select value={String(value)} onValueChange={(v) => onPick(parseInt(v))}>
+      <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Firma…" /></SelectTrigger>
+      <SelectContent>
+        {orgs.map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
       </SelectContent>
     </Select>
   );

@@ -173,6 +173,7 @@ export interface ConnectorDetail extends Connector {
 
 export interface ReviewItem {
   receipt_id: number;
+  organization_id: number;
   subject: string | null;
   sender: string | null;
   received_at: string | null;

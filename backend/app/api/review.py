@@ -56,6 +56,7 @@ async def list_review_queue(
         )
         items.append(ReviewItemOut(
             receipt_id=r.id,
+            organization_id=r.organization_id,
             subject=subject,
             sender=sender,
             received_at=r.received_at or r.created_at,
@@ -90,6 +91,8 @@ async def decide(
     elif body.action in ("accept", "reassign"):
         if body.provider_id:
             r.provider_id = body.provider_id
+        if body.organization_id is not None:
+            r.organization_id = body.organization_id
         if body.client_id is not None:
             r.client_id = body.client_id
         r.status = ReceiptStatus.processed
@@ -119,6 +122,7 @@ async def decide(
         "event": "review_decision",
         "action": body.action,
         "provider_id": body.provider_id,
+        "organization_id": body.organization_id,
         "client_id": body.client_id,
         "created_rule": body.create_rule,
     })

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBase } from "../../lib/api";
-import type { DocumentType, PaymentMethod, Provider, ReceiptDetail, Client } from "../../types";
+import type { DocumentType, Organization, PaymentMethod, Provider, ReceiptDetail, Client } from "../../types";
 import { DOCUMENT_TYPE_LABEL, PAYMENT_METHOD_LABEL } from "../../types";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../ui/dialog";
 import { fmtDate, fmtDateTime, fmtMoney } from "../../lib/format";
@@ -26,6 +26,7 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
   });
 
   const { data: providers } = useQuery<Provider[]>({ queryKey: ["providers"], queryFn: () => api("/providers") });
+  const { data: orgs } = useQuery<Organization[]>({ queryKey: ["orgs"], queryFn: () => api("/organizations") });
   const { data: clients } = useQuery<Client[]>({
     queryKey: ["clients", data?.organization_id],
     queryFn: () => api("/clients", { query: { organization_id: data?.organization_id } }),
@@ -108,6 +109,14 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                         {(Object.keys(DOCUMENT_TYPE_LABEL) as DocumentType[]).map((d) => (
                           <SelectItem key={d} value={d}>{DOCUMENT_TYPE_LABEL[d]}</SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Firma">
+                    <Select value={String(edit.organization_id ?? data.organization_id)} onValueChange={(v) => setEdit((s: any) => ({ ...s, organization_id: parseInt(v) }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(orgs ?? []).map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </Field>

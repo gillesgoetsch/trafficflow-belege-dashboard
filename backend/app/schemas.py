@@ -237,6 +237,7 @@ class ReceiptDetail(ReceiptOut):
 
 
 class ReceiptPatch(BaseModel):
+    organization_id: int | None = None
     provider_id: int | None = None
     client_id: int | None = None
     document_date: datetime | None = None
@@ -247,6 +248,7 @@ class ReceiptPatch(BaseModel):
     status: ReceiptStatus | None = None
     payment_method: PaymentMethod | None = None
     brand: str | None = None
+    document_type: str | None = None
     notes: str | None = None
     vat_rate: Decimal | None = None
     vat_amount: Decimal | None = None
@@ -298,6 +300,7 @@ class ConnectorDetail(ConnectorOut):
 
 class ReviewItemOut(BaseModel):
     receipt_id: int
+    organization_id: int
     subject: str | None
     sender: str | None
     received_at: datetime | None
@@ -314,6 +317,7 @@ class ReviewItemOut(BaseModel):
 class ReviewDecision(BaseModel):
     action: str  # accept | reject | reassign
     provider_id: int | None = None
+    organization_id: int | None = None
     client_id: int | None = None
     create_rule: bool = False
 
