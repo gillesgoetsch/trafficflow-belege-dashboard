@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "allowedDomains": ["*"],
+      "allowLocalBinding": true
+    },
+    "filesystem": {
+      "allowWrite": [
+        "/tmp",
+        "/private/tmp",
+        "~/.npm",
+        "~/.cache",
+        "~/Library/Caches",
+        "~/.pnpm-store",
+        "~/.bun",
+        "~/.config",
+        "~/.local/share"
+      ]
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(bun *)",
+      "Bash(node *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(jq *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && git fetch --quiet 2>/dev/null && git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 && git pull --rebase --autostash --quiet 2>&1 | tail -3 || true",
+            "timeout": 30,
+            "statusMessage": "git pull (auto)"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && git add -A && (git diff --cached --quiet || git -c commit.gpgsign=false commit -m \"auto: $(date '+%Y-%m-%d %H:%M:%S %Z')\" --quiet) && (git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 && git push --quiet 2>&1 | tail -3 || git push --quiet --set-upstream origin HEAD 2>&1 | tail -3) || true",
+            "timeout": 60,
+            "statusMessage": "git commit + push (auto)"
+          }
+        ]
+      }
+    ]
+  }
+}
