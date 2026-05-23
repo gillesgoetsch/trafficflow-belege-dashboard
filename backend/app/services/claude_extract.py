@@ -49,30 +49,34 @@ Return STRICT JSON in this exact shape:
 }
 
 ------------------------------------------------------------------
-DOCUMENT TYPE — pick exactly ONE. Be decisive — most files are NOT "receipt".
+DOCUMENT TYPE — pick exactly ONE. DEFAULT to "receipt" — the vast majority
+of uploads ARE receipts. Only deviate when the markers below are obvious.
 ------------------------------------------------------------------
-- "upcoming" : MUST classify as "upcoming" if you see ANY of these markers:
-               * "Upcoming - not due yet"  (English Notion / SaaS pattern)
-               * "Status: Upcoming" / "Status: Draft"
-               * "Vorabrechnung" / "Vorausrechnung"
-               * "Preview invoice" / "Preview" / "Draft invoice"
-               * "Will be charged on …" / "Scheduled for …"
-               * The invoice date is in the FUTURE relative to the email/upload
-                 context (date printed > today's likely date)
-               Subscription tools (Notion, Adobe, Figma, Vercel) send next
-               month's invoice ahead of the actual charge — those are "upcoming",
-               not "receipt".
-- "document" : a legitimate non-invoice document the user wants archived:
-               packing slips, delivery confirmations / Lieferschein, attestations,
-               contracts, certificates, terms of service, membership cards.
-               Also: a screenshot/scan that does NOT show a clear total amount or
-               vendor — if you can't read the total, prefer "document" over
-               "receipt". Set total_amount to null when not readable.
-- "receipt"  : a paid OR payable invoice / Rechnung / Quittung / Beleg with a real
-               total amount AND a real issue date AND a clear vendor. If any of
-               these three is missing or unreadable, prefer "document" or "other".
-- "other"    : truly junk — marketing email PDFs without a real bill, gibberish
-               scans, unrelated files. Set total_amount and dates to null.
+- "receipt"  : a paid OR payable invoice / Rechnung / Quittung / Beleg / Receipt.
+               Has a vendor, an amount, and an issue date. THIS IS THE DEFAULT.
+               Anything that looks like a normal bill, even from SaaS tools
+               (Notion, Adobe, ChatGPT, Claude, Digitec, Amazon, Netcup, Bexio,
+               etc.) is a "receipt". Bank-transfer receipts and credit-card
+               charges with proof are receipts. Twint screenshots with a
+               clearly stamped amount are receipts.
+
+- "upcoming" : Classify as "upcoming" ONLY if you see one of these explicit
+               markers on the document itself:
+                 * "Upcoming - not due yet" / "Status: Upcoming"
+                 * "Vorabrechnung" / "Preview invoice" / "Draft invoice"
+                 * "Will be charged on …" / "Scheduled for …"
+               Notion in particular sends "Upcoming" invoices for next month's
+               charge — those ARE upcoming. Without an explicit marker like
+               above, keep "receipt".
+
+- "document" : ONLY if it is clearly NOT an invoice — a packing slip
+               (Lieferschein), delivery confirmation, attestation, contract,
+               certificate, terms of service. No amount visible and no
+               "Rechnung/Invoice/Receipt" wording. Random scan of a non-bill.
+
+- "other"    : Marketing email PDFs, gibberish, blank pages, screenshots of
+               unrelated things. If you can read an amount + a vendor, it is
+               NOT "other".
 
 ------------------------------------------------------------------
 DATE RULES — most common mistake area, read carefully
