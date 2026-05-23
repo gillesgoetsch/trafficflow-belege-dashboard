@@ -124,10 +124,19 @@ async def sync_mailbox(ctx, mailbox_id: int):
                 last_uid=mb.last_uid, raw_dir=raw_dir,
             )
         except Exception as e:  # noqa: BLE001
-            mb.last_error = str(e)[:1000]
+            # Tenacity wraps the real cause; unwrap so the UI sees something
+            # human ("Login failed") instead of "RetryError[<Future ...>]".
+            real = e
+            if hasattr(real, "last_attempt") and real.last_attempt is not None:
+                try:
+                    real.last_attempt.result()
+                except Exception as inner:  # noqa: BLE001
+                    real = inner
+            msg = str(real) or type(real).__name__
+            mb.last_error = msg[:1000]
             await db.commit()
-            logger.error("sync_mailbox.fetch_failed", mailbox_id=mb.id, error=str(e))
-            return {"ok": False, "error": str(e)}
+            logger.error("sync_mailbox.fetch_failed", mailbox_id=mb.id, error=msg)
+            return {"ok": False, "error": msg}
 
         enqueued = 0
         max_uid = mb.last_uid
