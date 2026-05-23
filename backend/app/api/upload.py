@@ -127,8 +127,9 @@ async def _persist_upload(
     await db.commit()
     await db.refresh(r)
 
-    # Trigger OCR/extraction if we don't already have amount + provider
-    if enqueue_ocr and (not is_pdf or amount is None or not provider_id):
+    # Always run Claude extraction — it's cheap (~$0.005/receipt) and gives
+    # us accurate amount/date/VAT/customer_hint that drives org routing.
+    if enqueue_ocr:
         pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
         await pool.enqueue_job("process_uploaded_receipt", r.id)
 
