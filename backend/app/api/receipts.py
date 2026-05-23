@@ -193,12 +193,22 @@ async def reprocess(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],
 ):
+    """Re-run extraction (Claude + local payment inference) on a single receipt.
+
+    Works for both email-sourced and uploaded receipts — picks the right
+    worker job based on whether email_message_id is set.
+    """
     r = await db.get(Receipt, receipt_id)
-    if not r or not r.email_message_id:
-        raise HTTPException(404, "Not found or has no source email")
+    if not r:
+        raise HTTPException(404, "Not found")
     pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-    await pool.enqueue_job("process_message", r.email_message_id, force=True)
-    return {"ok": True}
+    if r.email_message_id:
+        await pool.enqueue_job("process_message", r.email_message_id, force=True)
+        kind = "process_message"
+    else:
+        await pool.enqueue_job("process_uploaded_receipt", r.id)
+        kind = "process_uploaded_receipt"
+    return {"ok": True, "kind": kind}
 
 
 @router.post("/{receipt_id}/resync")
@@ -369,10 +379,14 @@ async def bulk_reprocess(
 ):
     rows = (await db.scalars(select(Receipt).where(Receipt.id.in_(ids)))).all()
     pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    n = 0
     for r in rows:
         if r.email_message_id:
             await pool.enqueue_job("process_message", r.email_message_id, force=True)
-    return {"ok": True, "count": sum(1 for r in rows if r.email_message_id)}
+        else:
+            await pool.enqueue_job("process_uploaded_receipt", r.id)
+        n += 1
+    return {"ok": True, "count": n}
 
 
 @router.post("/bulk/resync")

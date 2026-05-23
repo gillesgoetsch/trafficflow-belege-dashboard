@@ -9,7 +9,7 @@ import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { RefreshCw, Save, BookCheck, BookX, Download } from "lucide-react";
+import { RefreshCw, Save, BookCheck, BookX, Download, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "../ui/toaster";
 import { Textarea } from "../ui/textarea";
@@ -43,7 +43,18 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
 
   const reprocess = useMutation({
     mutationFn: () => api(`/receipts/${id}/reprocess`, { method: "POST" }),
-    onSuccess: () => toast({ title: "Neuverarbeitung gestartet" }),
+    onSuccess: async () => {
+      toast({ title: "Neuverarbeitung läuft…", description: "KI-Extraktion startet, Daten werden in wenigen Sekunden aktualisiert." });
+      // Poll the receipt a couple of times so the panel shows fresh values
+      // once the worker finishes (usually 3-8s for an upload).
+      for (let i = 0; i < 8; i++) {
+        await new Promise((r) => setTimeout(r, 2500));
+        await qc.invalidateQueries({ queryKey: ["receipt", id] });
+      }
+      qc.invalidateQueries({ queryKey: ["receipts"] });
+      toast({ title: "Neuverarbeitung abgeschlossen", variant: "success" });
+    },
+    onError: (e: any) => toast({ title: "Neuverarbeitung fehlgeschlagen", description: e.message, variant: "destructive" }),
   });
 
   const book = useMutation({
@@ -74,7 +85,10 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                 ) : (
                   <Button size="sm" onClick={() => book.mutate()}><BookCheck className="h-3.5 w-3.5 mr-1" /> Verbuchen</Button>
                 )}
-                <Button size="sm" variant="outline" onClick={() => reprocess.mutate()}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Neu verarbeiten</Button>
+                <Button size="sm" variant="outline" onClick={() => reprocess.mutate()} disabled={reprocess.isPending} title="KI-Extraktion erneut ausführen (Claude liest das PDF neu)">
+                  {reprocess.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+                  {reprocess.isPending ? "KI läuft…" : "Neu verarbeiten"}
+                </Button>
                 <a href={`${apiBase}/receipts/${data.id}/file`} download={data.filename}>
                   <Button size="sm" variant="outline"><Download className="h-3.5 w-3.5 mr-1" /> Herunterladen</Button>
                 </a>

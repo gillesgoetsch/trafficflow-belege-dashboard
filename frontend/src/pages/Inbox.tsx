@@ -373,6 +373,25 @@ export default function Inbox() {
                     <Button size="icon" variant="ghost" className="h-7 w-7" title="Vorschau" onClick={() => { setFocusIndex(idx); setOpenId(r.id); }}>
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      title="KI-Extraktion neu ausführen"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await api(`/receipts/${r.id}/reprocess`, { method: "POST" });
+                          toast({ title: "Neuverarbeitung läuft…" });
+                          setTimeout(() => qc.invalidateQueries({ queryKey: ["receipts"] }), 5000);
+                          setTimeout(() => qc.invalidateQueries({ queryKey: ["receipts"] }), 12000);
+                        } catch (err: any) {
+                          toast({ title: "Fehlgeschlagen", description: err.message, variant: "destructive" });
+                        }
+                      }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </Button>
                     <a href={`${apiBase}/receipts/${r.id}/file`} download={r.filename} title="Herunterladen">
                       <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="h-3.5 w-3.5" /></Button>
                     </a>
