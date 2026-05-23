@@ -14,7 +14,7 @@ ENV PYTHONUNBUFFERED=1 \
 # for llama-cpp-python which builds from source on ARM)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg git \
-    libpq5 libpq-dev gcc g++ cmake \
+    libpq5 libpq-dev gcc g++ cmake pkg-config \
     libopenblas-dev libomp-dev \
     fonts-noto fonts-noto-cjk fonts-noto-color-emoji \
     libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
