@@ -122,6 +122,20 @@ services:
       - ${DEPLOY_REPO_PATH:-/srv/belege}:/repo
       # Allow webhook to run docker on the host
       - /var/run/docker.sock:/var/run/docker.sock
+      # SSH deploy key for private-repo access. Host dir must contain
+      # id_ed25519 (0600) + id_ed25519.pub. known_hosts is pre-seeded in the image.
+      - ${DEPLOY_SSH_DIR:-/srv/belege-deploy-ssh}:/root/.ssh-mount:ro
+    # Copy mounted (ro) ssh files into a writable .ssh dir with correct perms,
+    # then start the webhook server.
+    command: >
+      sh -c "
+      if [ -f /root/.ssh-mount/id_ed25519 ]; then
+        cp /root/.ssh-mount/id_ed25519 /root/.ssh/id_ed25519 &&
+        chmod 600 /root/.ssh/id_ed25519 &&
+        cp /root/.ssh-mount/id_ed25519.pub /root/.ssh/id_ed25519.pub 2>/dev/null || true;
+      fi;
+      exec python server.py
+      "
     networks: [internal]
 
   backup:
