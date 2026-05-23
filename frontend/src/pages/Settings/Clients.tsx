@@ -46,7 +46,9 @@ export default function Clients() {
         <Button onClick={() => setCreating(true)} disabled={!orgId}><Plus className="h-4 w-4 mr-1" /> Add sub-client</Button>
       </header>
       <p className="text-sm text-muted-foreground">
-        Sub-clients let you split receipts that arrive under one shared mailbox across different brands or business units (e.g. <em>leckker</em> vs <em>sichersatt</em>).
+        Use sub-clients only when one organization manages receipts for separate legal entities.
+        For lightweight brand tagging within one company, edit the per-receipt <em>Brand</em> field
+        on the inbox or detail view instead.
       </p>
 
       <Card>

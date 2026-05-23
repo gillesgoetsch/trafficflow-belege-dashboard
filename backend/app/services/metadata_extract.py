@@ -36,18 +36,33 @@ _DATE_PATTERNS = [
 ]
 
 
+def _sane(dt: datetime | None) -> datetime | None:
+    """Reject obvious garbage: too far in the future, before 2005."""
+    if not dt:
+        return None
+    from datetime import datetime as _dt
+    now = _dt.now()
+    if dt.replace(tzinfo=None) > now.replace(tzinfo=None) + __import__("datetime").timedelta(days=60):
+        return None
+    if dt.year < 2005:
+        return None
+    return dt
+
+
 def parse_first_date(text: str) -> datetime | None:
     for pat in _DATE_PATTERNS:
         m = re.search(pat, text, re.IGNORECASE)
         if not m:
             continue
         try:
-            return dateparser.parse(m.group(0), dayfirst=True, fuzzy=True)
+            parsed = dateparser.parse(m.group(0), dayfirst=True, fuzzy=True)
+            if (sane := _sane(parsed)):
+                return sane
         except (ValueError, dateparser.ParserError):  # type: ignore[attr-defined]
             continue
-    # Last resort: dateutil fuzzy
+    # Fuzzy last resort, but only if we get a sane date out
     try:
-        return dateparser.parse(text[:1000], fuzzy=True, dayfirst=True)
+        return _sane(dateparser.parse(text[:1000], fuzzy=True, dayfirst=True))
     except Exception:
         return None
 
