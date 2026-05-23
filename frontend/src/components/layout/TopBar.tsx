@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { Moon, Search, Sun, LogOut, UserCircle } from "lucide-react";
+import { Monitor, Moon, Search, Sun, LogOut, UserCircle } from "lucide-react";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
 import {
@@ -63,8 +63,8 @@ export function TopBar() {
         </Select>
       </div>
 
-      <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="toggle theme">
-        {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={`theme: ${theme}`} title={`theme: ${theme} (click to cycle)`}>
+        {theme === "system" ? <Monitor className="h-4 w-4" /> : theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       </Button>
 
       <DropdownMenu>

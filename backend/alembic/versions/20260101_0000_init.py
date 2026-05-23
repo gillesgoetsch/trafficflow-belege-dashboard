@@ -19,28 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Enums — `create_type=False` so column references don't try to recreate
-    # them; we create them explicitly below with checkfirst=True.
-    match_type_enum = sa.Enum(
-        "sender_domain", "sender_email", "subject_contains", "body_contains",
-        "plus_alias", "sender_contains",
-        name="match_type", create_type=False,
-    )
-    classification_layer_enum = sa.Enum("1", "2", "3", "manual", name="classification_layer", create_type=False)
-    connector_type_enum = sa.Enum("local", "onedrive", "bexio", name="connector_type", create_type=False)
-    receipt_status_enum = sa.Enum(
-        "processing", "processed", "review_needed", "archived", "failed",
-        name="receipt_status", create_type=False,
-    )
-    sync_status_enum = sa.Enum("pending", "synced", "failed", "skipped", name="sync_status", create_type=False)
-    email_msg_status_enum = sa.Enum(
-        "pending", "classified", "rendered", "finished",
-        "review_needed", "failed", "not_a_receipt",
-        name="email_msg_status", create_type=False,
-    )
-
-    # Create enums idempotently via raw SQL — SQLAlchemy's checkfirst doesn't
-    # work reliably over asyncpg-wrapped connections.
+    # Create PostgreSQL enum types via raw SQL DO blocks (idempotent).
     _enum_defs = [
         ("match_type", ["sender_domain", "sender_email", "subject_contains",
                         "body_contains", "plus_alias", "sender_contains"]),
@@ -51,14 +30,23 @@ def upgrade() -> None:
         ("email_msg_status", ["pending", "classified", "rendered", "finished",
                               "review_needed", "failed", "not_a_receipt"]),
     ]
-    for name, values in _enum_defs:
-        vals = ", ".join(f"'{v}'" for v in values)
+    for _name, _values in _enum_defs:
+        _vals = ", ".join(f"'{v}'" for v in _values)
         op.execute(
             f"DO $$ BEGIN "
-            f"CREATE TYPE {name} AS ENUM ({vals}); "
+            f"CREATE TYPE {_name} AS ENUM ({_vals}); "
             f"EXCEPTION WHEN duplicate_object THEN null; "
             f"END $$;"
         )
+
+    # Reference the enum types by NAME only — postgresql.ENUM with
+    # create_type=False guarantees columns never try to re-CREATE the type.
+    match_type_enum = postgresql.ENUM(name="match_type", create_type=False)
+    classification_layer_enum = postgresql.ENUM(name="classification_layer", create_type=False)
+    connector_type_enum = postgresql.ENUM(name="connector_type", create_type=False)
+    receipt_status_enum = postgresql.ENUM(name="receipt_status", create_type=False)
+    sync_status_enum = postgresql.ENUM(name="sync_status", create_type=False)
+    email_msg_status_enum = postgresql.ENUM(name="email_msg_status", create_type=False)
 
     # users
     op.create_table(

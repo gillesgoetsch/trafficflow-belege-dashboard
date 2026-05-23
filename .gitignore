@@ -51,6 +51,9 @@ backups/
 *.pem
 *.key
 secrets/
+.passwords
+.env.local.*
+docker-compose.override.yml
 
 # Playwright
 test-results/
