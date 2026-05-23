@@ -1,20 +1,19 @@
-# Stage 1: pull docker CLI + compose plugin from official docker image.
-# Avoids Debian's missing/renamed packages on trixie.
-FROM docker:27-cli AS dockerbins
-
-# Stage 2: webhook runtime
 FROM python:3.12-slim
 
+# System deps + Docker CLI/compose plugin from Docker's official apt repo
+# (Debian's packages are missing/renamed on trixie; Docker's repo is reliable).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates git openssh-client \
-    && rm -rf /var/lib/apt/lists/*
+        ca-certificates curl gnupg git openssh-client && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+        > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin && \
+    rm -rf /var/lib/apt/lists/*
 
-# Bring in docker CLI + compose plugin
-COPY --from=dockerbins /usr/local/bin/docker /usr/local/bin/docker
-COPY --from=dockerbins /usr/local/libexec/docker/cli-plugins/docker-compose \
-                       /usr/local/libexec/docker/cli-plugins/docker-compose
-
-# Pre-seed github.com host key so first git fetch doesn't hang on host-key prompt
+# Pre-seed github.com host key
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh && \
     ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> /root/.ssh/known_hosts && \
     chmod 644 /root/.ssh/known_hosts
