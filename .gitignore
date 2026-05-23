@@ -46,6 +46,7 @@ backups/
 *.sqlite
 *.db
 *.dump
+tmp/sample-belege/
 
 # Secrets
 *.pem

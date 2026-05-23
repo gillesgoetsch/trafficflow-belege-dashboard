@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBase } from "../lib/api";
 import { useUi } from "../store/ui";
-import type { Provider, Receipt, ReceiptList } from "../types";
+import type { PaymentMethod, Provider, Receipt, ReceiptList } from "../types";
+import { PAYMENT_METHOD_LABEL } from "../types";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
@@ -22,21 +23,25 @@ export default function Inbox() {
   const [search, setSearch] = useState("");
   const [providerId, setProviderId] = useState<number | null>(null);
   const [status, setStatus] = useState<string | undefined>(undefined);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | undefined>(undefined);
+  const [brand, setBrand] = useState<string | undefined>(undefined);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
   const qc = useQueryClient();
 
-  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [orgId, search, providerId, status]);
+  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [orgId, search, providerId, status, paymentMethod, brand]);
 
   const { data: providers } = useQuery<Provider[]>({ queryKey: ["providers"], queryFn: () => api("/providers") });
 
   const { data, isFetching } = useQuery<ReceiptList>({
-    queryKey: ["receipts", { orgId, page, search, providerId, status }],
+    queryKey: ["receipts", { orgId, page, search, providerId, status, paymentMethod, brand }],
     queryFn: () => api("/receipts", { query: {
       organization_id: orgId ?? undefined,
       provider_id: providerId ?? undefined,
       status,
+      payment_method: paymentMethod,
+      brand: brand,
       search: search || undefined,
       page, page_size: PAGE_SIZE,
     }}),
@@ -139,8 +144,26 @@ export default function Inbox() {
             <SelectItem value="failed">Failed</SelectItem>
           </SelectContent>
         </Select>
-        {(search || providerId || status) && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setProviderId(null); setStatus(undefined); }}>
+        <Select value={paymentMethod ?? "any"} onValueChange={(v) => setPaymentMethod(v === "any" ? undefined : v as PaymentMethod)}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Payment method" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">All payments</SelectItem>
+            {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((p) => (
+              <SelectItem key={p} value={p}>{PAYMENT_METHOD_LABEL[p]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={brand ?? "any"} onValueChange={(v) => setBrand(v === "any" ? undefined : v)}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Brand" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">All brands</SelectItem>
+            <SelectItem value="leckker">Leckker</SelectItem>
+            <SelectItem value="sichersatt">SicherSatt</SelectItem>
+            <SelectItem value="trafficflow">TrafficFlow</SelectItem>
+          </SelectContent>
+        </Select>
+        {(search || providerId || status || paymentMethod || brand) && (
+          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setProviderId(null); setStatus(undefined); setPaymentMethod(undefined); setBrand(undefined); }}>
             <FilterX className="h-3.5 w-3.5 mr-1" /> Clear
           </Button>
         )}
@@ -153,9 +176,10 @@ export default function Inbox() {
               <TableHead className="w-8"></TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Provider</TableHead>
-              <TableHead>Client</TableHead>
+              <TableHead>Brand</TableHead>
               <TableHead>Filename</TableHead>
               <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Payment</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Layer</TableHead>
             </TableRow>
@@ -176,15 +200,16 @@ export default function Inbox() {
                 </TableCell>
                 <TableCell className="whitespace-nowrap">{fmtDate(r.document_date)}</TableCell>
                 <TableCell>{(providers ?? []).find((p) => p.id === r.provider_id)?.display_name ?? "—"}</TableCell>
-                <TableCell>{r.client_id ?? "—"}</TableCell>
-                <TableCell className="max-w-[280px] truncate" title={r.filename}>{r.filename}</TableCell>
+                <TableCell>{r.brand ? <Badge variant="outline">{r.brand}</Badge> : "—"}</TableCell>
+                <TableCell className="max-w-[260px] truncate" title={r.filename}>{r.filename}</TableCell>
                 <TableCell className="text-right whitespace-nowrap">{fmtMoney(r.amount, r.currency)}</TableCell>
+                <TableCell><PaymentBadge pm={r.payment_method} /></TableCell>
                 <TableCell><StatusBadge status={r.status} /></TableCell>
                 <TableCell><LayerBadge layer={r.classification_layer} /></TableCell>
               </TableRow>
             ))}
             {!items.length && (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">No receipts yet</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-12">No receipts yet</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -217,4 +242,16 @@ function StatusBadge({ status }: { status: Receipt["status"] }) {
 function LayerBadge({ layer }: { layer: Receipt["classification_layer"] }) {
   const label = { "1": "Rules", "2": "LLM", "3": "Review", "manual": "Manual" }[layer];
   return <Badge variant="outline">{label}</Badge>;
+}
+function PaymentBadge({ pm }: { pm: PaymentMethod }) {
+  const colorMap: Record<PaymentMethod, "default" | "secondary" | "outline"> = {
+    credit_card: "default",
+    bank_transfer: "secondary",
+    twint: "default",
+    cash: "outline",
+    paypal: "secondary",
+    other: "outline",
+    unknown: "outline",
+  };
+  return <Badge variant={colorMap[pm] ?? "outline"}>{PAYMENT_METHOD_LABEL[pm]}</Badge>;
 }

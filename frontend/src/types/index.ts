@@ -13,6 +13,25 @@ export type MatchType =
 
 export type SyncStatus = "pending" | "synced" | "failed" | "skipped";
 
+export type PaymentMethod =
+  | "credit_card"
+  | "bank_transfer"
+  | "twint"
+  | "cash"
+  | "paypal"
+  | "other"
+  | "unknown";
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  credit_card: "Credit card",
+  bank_transfer: "Bank transfer",
+  twint: "Twint",
+  cash: "Cash",
+  paypal: "PayPal",
+  other: "Other",
+  unknown: "Unknown",
+};
+
 export interface User {
   id: number;
   email: string;
@@ -106,6 +125,8 @@ export interface Receipt {
   classification_layer: Layer;
   confidence: string;
   status: ReceiptStatus;
+  payment_method: PaymentMethod;
+  brand: string | null;
   review_reason: string | null;
   created_at: string;
 }
@@ -159,4 +180,5 @@ export interface DashboardKPIs {
 export interface DashboardCharts {
   by_day: { bucket: string; value: number }[];
   top_providers: { provider_id: number | null; provider: string; count: number; total_amount: string }[];
+  by_payment_method: { payment_method: string; count: number; total_amount: string }[];
 }

@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.core.pagination import Page, page_params
 from app.core.security import get_current_user
-from app.db.models import Provider, Receipt, ReceiptStatus, User
+from app.db.models import PaymentMethod, Provider, Receipt, ReceiptStatus, User
 from app.db.session import get_db
 from app.schemas import ReceiptDetail, ReceiptListOut, ReceiptOut, ReceiptPatch
 
@@ -32,6 +32,8 @@ def _filter_query(
     provider_id: int | None,
     client_id: int | None,
     status_: ReceiptStatus | None,
+    payment_method: PaymentMethod | None,
+    brand: str | None,
     date_from: datetime | None,
     date_to: datetime | None,
     amount_min: Decimal | None,
@@ -49,6 +51,10 @@ def _filter_query(
         conds.append(Receipt.client_id == client_id)
     if status_:
         conds.append(Receipt.status == status_)
+    if payment_method:
+        conds.append(Receipt.payment_method == payment_method)
+    if brand:
+        conds.append(Receipt.brand == brand)
     if date_from:
         conds.append(Receipt.document_date >= date_from)
     if date_to:
@@ -62,6 +68,7 @@ def _filter_query(
         conds.append(or_(
             Receipt.filename.ilike(pattern),
             Receipt.invoice_number.ilike(pattern),
+            Receipt.brand.ilike(pattern),
         ))
     return and_(*conds) if conds else True
 
@@ -76,6 +83,8 @@ async def list_receipts(
     provider_id: int | None = None,
     client_id: int | None = None,
     status: ReceiptStatus | None = None,
+    payment_method: PaymentMethod | None = None,
+    brand: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     amount_min: Decimal | None = None,
@@ -85,6 +94,7 @@ async def list_receipts(
     order: str = Query("desc"),
 ):
     cond = _filter_query(organization_id, mailbox_id, provider_id, client_id, status,
+                         payment_method, brand,
                          date_from, date_to, amount_min, amount_max, search)
 
     sort_col_map = {

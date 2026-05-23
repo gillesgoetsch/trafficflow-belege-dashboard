@@ -10,7 +10,7 @@ import {
   Users,
   Plug,
   UserCircle,
-  Sparkles,
+  Receipt,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 
@@ -35,7 +35,7 @@ export function Sidebar() {
     <aside className="w-60 shrink-0 border-r border-border bg-card hidden md:flex md:flex-col">
       <div className="h-14 flex items-center gap-2 px-4 border-b border-border">
         <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center">
-          <Sparkles className="h-4 w-4" />
+          <Receipt className="h-4 w-4" />
         </div>
         <div className="font-semibold tracking-tight">Belege-Hub</div>
       </div>

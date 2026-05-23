@@ -1,7 +1,7 @@
 import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
 import { useUi } from "../../store/ui";
-import { Inbox, LayoutDashboard, ListChecks, Settings, UploadCloud, Building2, Mailbox, ShieldCheck, Users, Plug, Sparkles } from "lucide-react";
+import { Inbox, LayoutDashboard, ListChecks, Settings, UploadCloud, Building2, Mailbox, ShieldCheck, Users, Plug, Receipt } from "lucide-react";
 
 export function CommandPalette() {
   const open = useUi((s) => s.paletteOpen);
@@ -21,7 +21,7 @@ export function CommandPalette() {
       <div className="relative w-full max-w-xl mx-4 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
         <Command className="w-full">
           <div className="flex items-center px-3 border-b border-border">
-            <Sparkles className="h-4 w-4 text-muted-foreground mr-2" />
+            <Receipt className="h-4 w-4 text-muted-foreground mr-2" />
             <Command.Input
               placeholder="Type a command or search..."
               className="flex-1 h-12 bg-transparent outline-none text-sm placeholder:text-muted-foreground"

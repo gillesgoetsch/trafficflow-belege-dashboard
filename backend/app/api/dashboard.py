@@ -19,7 +19,7 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
-from app.schemas import DashboardCharts, DashboardKPIs, ProviderShare, TimeSeriesPoint
+from app.schemas import DashboardCharts, DashboardKPIs, PaymentMethodShare, ProviderShare, TimeSeriesPoint
 
 router = APIRouter()
 
@@ -140,4 +140,20 @@ async def charts(
         ProviderShare(provider_id=pid, provider=name, count=cnt, total_amount=amt)
         for pid, name, cnt, amt in (await db.execute(top_q)).all()
     ]
-    return DashboardCharts(by_day=by_day, top_providers=top_providers)
+
+    pm_q = (
+        select(Receipt.payment_method, func.count(), func.coalesce(func.sum(Receipt.amount), 0))
+        .where(Receipt.document_date >= since, Receipt.status == ReceiptStatus.processed)
+        .group_by(Receipt.payment_method)
+    )
+    if organization_id:
+        pm_q = pm_q.where(Receipt.organization_id == organization_id)
+    by_payment_method = [
+        PaymentMethodShare(
+            payment_method=pm.value if hasattr(pm, "value") else str(pm),
+            count=cnt, total_amount=amt,
+        )
+        for pm, cnt, amt in (await db.execute(pm_q)).all()
+    ]
+
+    return DashboardCharts(by_day=by_day, top_providers=top_providers, by_payment_method=by_payment_method)

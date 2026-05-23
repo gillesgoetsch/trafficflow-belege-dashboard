@@ -15,6 +15,7 @@ from app.db.models import (
     ConnectorType,
     EmailMessageStatus,
     MatchType,
+    PaymentMethod,
     ReceiptStatus,
     SyncStatus,
 )
@@ -216,6 +217,8 @@ class ReceiptOut(_ORM):
     classification_layer: ClassificationLayer
     confidence: Decimal
     status: ReceiptStatus
+    payment_method: PaymentMethod
+    brand: str | None
     review_reason: str | None
     created_at: datetime
 
@@ -234,6 +237,8 @@ class ReceiptPatch(BaseModel):
     currency: str | None = None
     invoice_number: str | None = None
     status: ReceiptStatus | None = None
+    payment_method: PaymentMethod | None = None
+    brand: str | None = None
 
 
 class ReceiptListOut(BaseModel):
@@ -321,9 +326,16 @@ class ProviderShare(BaseModel):
     total_amount: Decimal
 
 
+class PaymentMethodShare(BaseModel):
+    payment_method: str
+    count: int
+    total_amount: Decimal
+
+
 class DashboardCharts(BaseModel):
     by_day: list[TimeSeriesPoint]
     top_providers: list[ProviderShare]
+    by_payment_method: list[PaymentMethodShare] = Field(default_factory=list)
 
 
 # Recursive references

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBase } from "../../lib/api";
-import type { Provider, ReceiptDetail, Client } from "../../types";
+import type { PaymentMethod, Provider, ReceiptDetail, Client } from "../../types";
+import { PAYMENT_METHOD_LABEL } from "../../types";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../ui/dialog";
 import { fmtDate, fmtDateTime, fmtMoney } from "../../lib/format";
 import { Button } from "../ui/button";
@@ -101,6 +102,19 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                   </Field>
                   <Field label="Invoice #">
                     <Input value={edit.invoice_number ?? data.invoice_number ?? ""} onChange={(e) => setEdit((s: any) => ({ ...s, invoice_number: e.target.value }))} />
+                  </Field>
+                  <Field label="Payment method">
+                    <Select value={edit.payment_method ?? data.payment_method} onValueChange={(v) => setEdit((s: any) => ({ ...s, payment_method: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((p) => (
+                          <SelectItem key={p} value={p}>{PAYMENT_METHOD_LABEL[p]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Brand">
+                    <Input value={edit.brand ?? data.brand ?? ""} placeholder="leckker / sichersatt / ..." onChange={(e) => setEdit((s: any) => ({ ...s, brand: e.target.value }))} />
                   </Field>
                   <Field label="Status">
                     <Select value={edit.status ?? data.status} onValueChange={(v) => setEdit((s: any) => ({ ...s, status: v }))}>

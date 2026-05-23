@@ -81,6 +81,16 @@ class EmailMessageStatus(str, enum.Enum):
     not_a_receipt = "not_a_receipt"
 
 
+class PaymentMethod(str, enum.Enum):
+    credit_card = "credit_card"
+    bank_transfer = "bank_transfer"
+    twint = "twint"
+    cash = "cash"
+    paypal = "paypal"
+    other = "other"
+    unknown = "unknown"
+
+
 # --- Users --------------------------------------------------------------------
 
 
@@ -269,6 +279,15 @@ class Receipt(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        Enum(PaymentMethod, name="payment_method"),
+        default=PaymentMethod.unknown,
+        server_default="unknown",
+        nullable=False,
+        index=True,
+    )
+    brand: Mapped[str | None] = mapped_column(String(64), index=True)
 
     raw_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     processing_log: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)

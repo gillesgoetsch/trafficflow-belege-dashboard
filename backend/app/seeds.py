@@ -119,9 +119,13 @@ PROVIDER_SEEDS: list[tuple[str, str, str | None, str | None, str | None, list[tu
 
 
 # (org_name, primary_email, default_currency, [client_slugs])
+# Note: "leckker" and "sichersatt" used to be sub-clients of SicherSatt AG.
+# They're now treated as BRANDS (lightweight tag on each receipt) since
+# they're the same legal client. The migration 0002_payment_brand removes
+# the leftover rows.
 ORG_SEEDS: list[tuple[str, str, str, list[str]]] = [
     ("TrafficFlow GmbH", "belege@trafficflow.ch", "CHF", []),
-    ("SicherSatt AG", "belege@sichersatt.ch", "CHF", ["leckker", "sichersatt"]),
+    ("SicherSatt AG", "belege@sichersatt.ch", "CHF", []),
 ]
 
 

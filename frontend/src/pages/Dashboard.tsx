@@ -86,25 +86,62 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Top providers</CardTitle>
-          <CardDescription>By count, last 90 days</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={charts?.top_providers ?? []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="provider" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Top providers</CardTitle>
+            <CardDescription>By count, last 90 days</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={charts?.top_providers ?? []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="provider" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} interval={0} angle={-15} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment methods</CardTitle>
+            <CardDescription>Spend by method, last 90 days</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={(charts?.by_payment_method ?? []).map((p) => ({
+                      name: p.payment_method, value: Number(p.total_amount) || p.count,
+                    }))}
+                    dataKey="value" nameKey="name" innerRadius={45} outerRadius={85} paddingAngle={2}
+                  >
+                    {(charts?.by_payment_method ?? []).map((p, idx) => (
+                      <Cell key={p.payment_method} fill={["#6366f1", "#22c55e", "#f59e0b", "#94a3b8", "#ef4444", "#06b6d4", "#a78bfa"][idx % 7]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-xs mt-2">
+              {(charts?.by_payment_method ?? []).map((p, idx) => (
+                <div key={p.payment_method} className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full" style={{ background: ["#6366f1", "#22c55e", "#f59e0b", "#94a3b8", "#ef4444", "#06b6d4", "#a78bfa"][idx % 7] }} />
+                  <span className="text-muted-foreground flex-1 capitalize">{p.payment_method.replace("_", " ")}</span>
+                  <span>{p.count}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
 import { useUi } from "../store/ui";
-import type { Organization, Provider, Client } from "../types";
+import type { Organization, PaymentMethod, Provider, Client } from "../types";
+import { PAYMENT_METHOD_LABEL } from "../types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Button } from "../components/ui/button";
@@ -17,6 +18,8 @@ export default function Upload() {
   const orgId = useUi((s) => s.selectedOrgId);
   const [providerId, setProviderId] = useState<number | null>(null);
   const [clientId, setClientId] = useState<number | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("unknown");
+  const [brand, setBrand] = useState<string>("");
   const [entries, setEntries] = useState<UploadEntry[]>([]);
   const qc = useQueryClient();
 
@@ -35,6 +38,8 @@ export default function Upload() {
       form.append("organization_id", String(orgId));
       if (providerId) form.append("provider_id", String(providerId));
       if (clientId) form.append("client_id", String(clientId));
+      if (paymentMethod) form.append("payment_method", paymentMethod);
+      if (brand) form.append("brand", brand);
       form.append("file", e.file);
       return await api("/upload", { method: "POST", body: form });
     },
@@ -73,7 +78,7 @@ export default function Upload() {
           <CardTitle>Pre-fill</CardTitle>
           <CardDescription>Optional — only used if metadata extraction can't infer them.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <div className="text-xs text-muted-foreground mb-1">Organization</div>
             <Select value={orgId ? String(orgId) : undefined} onValueChange={(v) => useUi.getState().setSelectedOrgId(parseInt(v))}>
@@ -90,12 +95,34 @@ export default function Upload() {
             </Select>
           </div>
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Sub-client (optional)</div>
-            <Select value={clientId ? String(clientId) : undefined} onValueChange={(v) => setClientId(parseInt(v))} disabled={!clients?.length}>
-              <SelectTrigger><SelectValue placeholder={clients?.length ? "Auto" : "None"} /></SelectTrigger>
-              <SelectContent>{(clients ?? []).map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+            <div className="text-xs text-muted-foreground mb-1">Payment method</div>
+            <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((p) => (
+                  <SelectItem key={p} value={p}>{PAYMENT_METHOD_LABEL[p]}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Brand (optional)</div>
+            <input
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={brand}
+              placeholder="leckker / sichersatt …"
+              onChange={(e) => setBrand(e.target.value)}
+            />
+          </div>
+          {clients?.length ? (
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Sub-client (optional)</div>
+              <Select value={clientId ? String(clientId) : undefined} onValueChange={(v) => setClientId(parseInt(v))}>
+                <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                <SelectContent>{(clients ?? []).map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

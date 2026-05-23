@@ -8,7 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Edit3 } from "lucide-react";
 import { useUi } from "../../store/ui";
 import { Badge } from "../../components/ui/badge";
 
@@ -23,11 +23,16 @@ export default function Clients() {
   });
   const { data: providers } = useQuery<Provider[]>({ queryKey: ["providers"], queryFn: () => api("/providers") });
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Client | null>(null);
   const [mappingFor, setMappingFor] = useState<Client | null>(null);
 
   const save = useMutation({
     mutationFn: (body: any) => api("/clients", { method: "POST", body }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["clients"] }); setCreating(false); },
+  });
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: any }) => api(`/clients/${id}`, { method: "PATCH", body }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["clients"] }); setEditing(null); },
   });
   const del = useMutation({
     mutationFn: (id: number) => api(`/clients/${id}`, { method: "DELETE" }),
@@ -53,6 +58,7 @@ export default function Clients() {
                 <div className="text-xs text-muted-foreground">slug: {c.slug}</div>
               </div>
               <Button size="sm" variant="outline" onClick={() => setMappingFor(c)}>Mappings</Button>
+              <Button size="icon" variant="ghost" onClick={() => setEditing(c)} aria-label="edit"><Edit3 className="h-4 w-4" /></Button>
               <Button size="icon" variant="ghost" onClick={() => confirm("Delete?") && del.mutate(c.id)}><Trash2 className="h-4 w-4" /></Button>
             </div>
           ))}
@@ -61,8 +67,31 @@ export default function Clients() {
       </Card>
 
       {creating && <CreateDialog orgId={orgId!} onClose={() => setCreating(false)} onSave={(b) => save.mutate(b)} />}
+      {editing && <EditDialog key={editing.id} client={editing} onClose={() => setEditing(null)} onSave={(b) => update.mutate({ id: editing.id, body: b })} />}
       {mappingFor && <MappingsDialog client={mappingFor} providers={providers ?? []} onClose={() => setMappingFor(null)} />}
     </div>
+  );
+}
+
+function EditDialog({ client, onClose, onSave }: { client: Client; onClose: () => void; onSave: (b: any) => void }) {
+  const [name, setName] = useState(client.name);
+  const [slug, setSlug] = useState(client.slug);
+  const [color, setColor] = useState(client.color ?? "");
+  return (
+    <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Edit sub-client</DialogTitle></DialogHeader>
+        <div className="space-y-2">
+          <div><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div><Label>Slug</Label><Input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} /></div>
+          <div><Label>Color (optional)</Label><Input value={color} placeholder="#22c55e" onChange={(e) => setColor(e.target.value)} /></div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button onClick={() => onSave({ organization_id: client.organization_id, name, slug, color: color || null })}>Save</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

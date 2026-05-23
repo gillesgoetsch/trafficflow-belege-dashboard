@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Sparkles } from "lucide-react";
+import { Receipt } from "lucide-react";
 import { toast } from "../components/ui/toaster";
 
 export default function Login() {
@@ -46,7 +46,7 @@ export default function Login() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-2">
             <div className="h-10 w-10 rounded-lg bg-primary/15 text-primary flex items-center justify-center">
-              <Sparkles className="h-5 w-5" />
+              <Receipt className="h-5 w-5" />
             </div>
           </div>
           <CardTitle>Belege-Hub</CardTitle>
