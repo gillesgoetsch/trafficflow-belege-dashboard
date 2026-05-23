@@ -168,7 +168,15 @@ async def download_file(
         raise HTTPException(404, "Not found")
     if not os.path.exists(r.file_path):
         raise HTTPException(410, "File missing on disk")
-    return FileResponse(r.file_path, filename=r.filename, media_type="application/pdf")
+    media = "application/pdf"
+    ext = os.path.splitext(r.filename)[1].lower()
+    if ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        media = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".webp": "image/webp", ".gif": "image/gif"}[ext]
+    return FileResponse(
+        r.file_path, media_type=media,
+        headers={"Content-Disposition": f'inline; filename="{r.filename}"'},
+    )
 
 
 @router.post("/{receipt_id}/reprocess")

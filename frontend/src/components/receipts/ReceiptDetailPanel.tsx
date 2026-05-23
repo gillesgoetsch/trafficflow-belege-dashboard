@@ -63,12 +63,29 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
               </div>
             </div>
 
-            <div className="overflow-auto bg-muted/30 border-r border-border">
-              <iframe
-                title="pdf-preview"
-                src={`${apiBase}/receipts/${data.id}/file#toolbar=0&navpanes=0`}
-                className="w-full h-full min-h-[60vh]"
-              />
+            <div className="overflow-auto bg-muted/30 border-r border-border relative">
+              {/\.pdf$/i.test(data.filename) ? (
+                <object
+                  data={`${apiBase}/receipts/${data.id}/file#toolbar=0&navpanes=0`}
+                  type="application/pdf"
+                  className="w-full h-full min-h-[60vh]"
+                >
+                  <div className="p-6 text-sm text-muted-foreground space-y-2 text-center">
+                    <p>Your browser can't preview this PDF inline.</p>
+                    <a className="inline-block text-primary underline"
+                       href={`${apiBase}/receipts/${data.id}/file`}
+                       target="_blank" rel="noreferrer">
+                      Open the PDF in a new tab
+                    </a>
+                  </div>
+                </object>
+              ) : (
+                <img
+                  src={`${apiBase}/receipts/${data.id}/file`}
+                  alt={data.filename}
+                  className="w-full h-auto max-h-[80vh] mx-auto object-contain"
+                />
+              )}
             </div>
 
             <div className="overflow-auto p-4 space-y-4">
