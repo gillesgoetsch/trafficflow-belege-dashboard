@@ -127,6 +127,11 @@ export interface Receipt {
   status: ReceiptStatus;
   payment_method: PaymentMethod;
   brand: string | null;
+  notes: string | null;
+  vat_rate: string | null;
+  vat_amount: string | null;
+  booked_at: string | null;
+  bookkeeping_ref: string | null;
   review_reason: string | null;
   created_at: string;
 }

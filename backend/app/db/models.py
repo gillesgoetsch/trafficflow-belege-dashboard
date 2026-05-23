@@ -289,6 +289,13 @@ class Receipt(Base, TimestampMixin):
     )
     brand: Mapped[str | None] = mapped_column(String(64), index=True)
 
+    # Accountant fields
+    notes: Mapped[str | None] = mapped_column(Text)
+    vat_rate: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    vat_amount: Mapped[float | None] = mapped_column(Numeric(14, 2))
+    booked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    bookkeeping_ref: Mapped[str | None] = mapped_column(String(128))
+
     raw_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     processing_log: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
     review_reason: Mapped[str | None] = mapped_column(Text)

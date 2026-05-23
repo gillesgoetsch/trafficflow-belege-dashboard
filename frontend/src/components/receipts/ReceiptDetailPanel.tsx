@@ -9,9 +9,11 @@ import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { RefreshCw, Save } from "lucide-react";
+import { RefreshCw, Save, BookCheck, BookX, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "../ui/toaster";
+import { Textarea } from "../ui/textarea";
+import { PdfPreview } from "./PdfPreview";
 
 export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose: () => void }) {
   const qc = useQueryClient();
@@ -43,6 +45,15 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
     onSuccess: () => toast({ title: "Reprocessing enqueued" }),
   });
 
+  const book = useMutation({
+    mutationFn: () => api(`/receipts/${id}/book`, { method: "POST" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["receipt", id] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Marked as booked", variant: "success" }); },
+  });
+  const unbook = useMutation({
+    mutationFn: () => api(`/receipts/${id}/unbook`, { method: "POST" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["receipt", id] }); qc.invalidateQueries({ queryKey: ["receipts"] }); toast({ title: "Unbooked" }); },
+  });
+
   return (
     <Dialog open={!!id} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-5xl h-[85vh] grid-cols-2 grid grid-rows-[auto_1fr] p-0">
@@ -56,35 +67,32 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-2">
+                {data.booked_at ? (
+                  <Button size="sm" variant="outline" onClick={() => unbook.mutate()}><BookX className="h-3.5 w-3.5 mr-1" /> Unbook</Button>
+                ) : (
+                  <Button size="sm" onClick={() => book.mutate()}><BookCheck className="h-3.5 w-3.5 mr-1" /> Mark booked</Button>
+                )}
                 <Button size="sm" variant="outline" onClick={() => reprocess.mutate()}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Reprocess</Button>
-                <a href={`${apiBase}/receipts/${data.id}/file`} target="_blank" rel="noreferrer">
-                  <Button size="sm" variant="outline">Open file</Button>
+                <a href={`${apiBase}/receipts/${data.id}/file`} download={data.filename}>
+                  <Button size="sm" variant="outline"><Download className="h-3.5 w-3.5 mr-1" /> Download</Button>
                 </a>
               </div>
             </div>
 
-            <div className="overflow-auto bg-muted/30 border-r border-border relative">
+            <div className="overflow-hidden border-r border-border min-h-[60vh]">
               {/\.pdf$/i.test(data.filename) ? (
-                <object
-                  data={`${apiBase}/receipts/${data.id}/file#toolbar=0&navpanes=0`}
-                  type="application/pdf"
-                  className="w-full h-full min-h-[60vh]"
-                >
-                  <div className="p-6 text-sm text-muted-foreground space-y-2 text-center">
-                    <p>Your browser can't preview this PDF inline.</p>
-                    <a className="inline-block text-primary underline"
-                       href={`${apiBase}/receipts/${data.id}/file`}
-                       target="_blank" rel="noreferrer">
-                      Open the PDF in a new tab
-                    </a>
-                  </div>
-                </object>
-              ) : (
-                <img
-                  src={`${apiBase}/receipts/${data.id}/file`}
-                  alt={data.filename}
-                  className="w-full h-auto max-h-[80vh] mx-auto object-contain"
+                <PdfPreview
+                  url={`${apiBase}/receipts/${data.id}/file`}
+                  filename={data.filename}
                 />
+              ) : (
+                <div className="h-full w-full overflow-auto bg-muted/30 flex items-start justify-center py-3">
+                  <img
+                    src={`${apiBase}/receipts/${data.id}/file`}
+                    alt={data.filename}
+                    className="max-w-full h-auto object-contain"
+                  />
+                </div>
               )}
             </div>
 
@@ -133,6 +141,15 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                   <Field label="Brand">
                     <Input value={edit.brand ?? data.brand ?? ""} placeholder="leckker / sichersatt / ..." onChange={(e) => setEdit((s: any) => ({ ...s, brand: e.target.value }))} />
                   </Field>
+                  <Field label="VAT rate %">
+                    <Input type="number" step="0.1" value={edit.vat_rate ?? data.vat_rate ?? ""} placeholder="e.g. 8.1" onChange={(e) => setEdit((s: any) => ({ ...s, vat_rate: e.target.value }))} />
+                  </Field>
+                  <Field label="VAT amount">
+                    <Input type="number" step="0.01" value={edit.vat_amount ?? data.vat_amount ?? ""} placeholder="auto / manual" onChange={(e) => setEdit((s: any) => ({ ...s, vat_amount: e.target.value }))} />
+                  </Field>
+                  <Field label="Bookkeeping ref">
+                    <Input value={edit.bookkeeping_ref ?? data.bookkeeping_ref ?? ""} placeholder="Bexio #, journal entry…" onChange={(e) => setEdit((s: any) => ({ ...s, bookkeeping_ref: e.target.value }))} />
+                  </Field>
                   <Field label="Status">
                     <Select value={edit.status ?? data.status} onValueChange={(v) => setEdit((s: any) => ({ ...s, status: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -147,9 +164,24 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                     <div className="text-sm h-9 flex items-center px-1">{Math.round(parseFloat(data.confidence) * 100)}%</div>
                   </Field>
                 </div>
+                <div className="mt-3">
+                  <Label className="text-xs">Notes</Label>
+                  <Textarea
+                    rows={2}
+                    placeholder="Why is this expense — context for the accountant…"
+                    value={edit.notes ?? data.notes ?? ""}
+                    onChange={(e) => setEdit((s: any) => ({ ...s, notes: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
                 <Button className="mt-3" size="sm" disabled={!Object.keys(edit).length} onClick={() => patch.mutate(edit)}>
                   <Save className="h-3.5 w-3.5 mr-1" /> Save
                 </Button>
+                {data.booked_at && (
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Booked {fmtDateTime(data.booked_at)}{data.bookkeeping_ref ? ` · ref ${data.bookkeeping_ref}` : ""}
+                  </p>
+                )}
               </section>
 
               <section>

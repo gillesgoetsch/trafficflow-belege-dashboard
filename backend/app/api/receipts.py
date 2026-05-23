@@ -1,10 +1,11 @@
-"""Receipt list/detail/edit/reprocess/bulk endpoints + file download + ZIP export."""
+"""Receipt list/detail/edit/reprocess/bulk endpoints + file download + ZIP/CSV export."""
 from __future__ import annotations
 
+import csv
 import io
 import os
 import zipfile
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -19,7 +20,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.core.pagination import Page, page_params
 from app.core.security import get_current_user
-from app.db.models import PaymentMethod, Provider, Receipt, ReceiptStatus, User
+from app.db.models import Client, Organization, PaymentMethod, Provider, Receipt, ReceiptStatus, User
 from app.db.session import get_db
 from app.schemas import ReceiptDetail, ReceiptListOut, ReceiptOut, ReceiptPatch
 
@@ -39,6 +40,7 @@ def _filter_query(
     amount_min: Decimal | None,
     amount_max: Decimal | None,
     search: str | None,
+    booked: str | None = None,  # "yes" | "no" | None
 ):
     conds = []
     if organization_id:
@@ -55,6 +57,10 @@ def _filter_query(
         conds.append(Receipt.payment_method == payment_method)
     if brand:
         conds.append(Receipt.brand == brand)
+    if booked == "yes":
+        conds.append(Receipt.booked_at.is_not(None))
+    elif booked == "no":
+        conds.append(Receipt.booked_at.is_(None))
     if date_from:
         conds.append(Receipt.document_date >= date_from)
     if date_to:
@@ -85,6 +91,7 @@ async def list_receipts(
     status: ReceiptStatus | None = None,
     payment_method: PaymentMethod | None = None,
     brand: str | None = None,
+    booked: str | None = Query(None, description="yes | no"),
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     amount_min: Decimal | None = None,
@@ -95,7 +102,7 @@ async def list_receipts(
 ):
     cond = _filter_query(organization_id, mailbox_id, provider_id, client_id, status,
                          payment_method, brand,
-                         date_from, date_to, amount_min, amount_max, search)
+                         date_from, date_to, amount_min, amount_max, search, booked)
 
     sort_col_map = {
         "document_date": Receipt.document_date,
@@ -276,3 +283,120 @@ async def bulk_delete(
     for r in rows:
         await db.delete(r)
     await db.commit()
+
+
+# --- Accountant workflows --------------------------------------------------
+
+
+@router.post("/{receipt_id}/book")
+async def book(
+    receipt_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+    bookkeeping_ref: str | None = Body(None, embed=True),
+):
+    r = await db.get(Receipt, receipt_id)
+    if not r:
+        raise HTTPException(404, "Not found")
+    r.booked_at = datetime.now(UTC)
+    if bookkeeping_ref:
+        r.bookkeeping_ref = bookkeeping_ref
+    await db.commit()
+    return {"ok": True, "booked_at": r.booked_at.isoformat()}
+
+
+@router.post("/{receipt_id}/unbook")
+async def unbook(
+    receipt_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+):
+    r = await db.get(Receipt, receipt_id)
+    if not r:
+        raise HTTPException(404, "Not found")
+    r.booked_at = None
+    r.bookkeeping_ref = None
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/bulk/book")
+async def bulk_book(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+    ids: list[int] = Body(..., embed=True),
+):
+    now = datetime.now(UTC)
+    rows = (await db.scalars(select(Receipt).where(Receipt.id.in_(ids)))).all()
+    for r in rows:
+        r.booked_at = now
+    await db.commit()
+    return {"ok": True, "count": len(rows)}
+
+
+@router.get("/export/csv")
+async def export_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+    organization_id: int | None = None,
+    provider_id: int | None = None,
+    status: ReceiptStatus | None = None,
+    payment_method: PaymentMethod | None = None,
+    brand: str | None = None,
+    booked: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    search: str | None = None,
+):
+    """Export receipts as CSV — bookkeeping-friendly columns."""
+    cond = _filter_query(
+        organization_id, None, provider_id, None, status, payment_method, brand,
+        date_from, date_to, None, None, search, booked,
+    )
+
+    rows = (await db.scalars(
+        select(Receipt)
+        .options(selectinload(Receipt.provider), selectinload(Receipt.client))
+        .where(cond)
+        .order_by(Receipt.document_date.asc())
+    )).all()
+
+    orgs = {o.id: o.name for o in (await db.scalars(select(Organization))).all()}
+
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+    w.writerow([
+        "ID", "Date", "Organization", "Provider", "Brand", "Client",
+        "Amount", "Currency", "VAT rate", "VAT amount",
+        "Payment method", "Invoice number", "Filename",
+        "Status", "Booked", "Booked at", "Bookkeeping ref", "Notes",
+    ])
+    for r in rows:
+        w.writerow([
+            r.id,
+            (r.document_date.date().isoformat() if r.document_date else ""),
+            orgs.get(r.organization_id, ""),
+            (r.provider.display_name if r.provider else ""),
+            r.brand or "",
+            (r.client.name if r.client else ""),
+            (f"{r.amount:.2f}" if r.amount is not None else ""),
+            r.currency or "",
+            (f"{r.vat_rate:.2f}" if r.vat_rate is not None else ""),
+            (f"{r.vat_amount:.2f}" if r.vat_amount is not None else ""),
+            r.payment_method.value if hasattr(r.payment_method, "value") else r.payment_method,
+            r.invoice_number or "",
+            r.filename,
+            r.status.value if hasattr(r.status, "value") else r.status,
+            "yes" if r.booked_at else "no",
+            (r.booked_at.isoformat() if r.booked_at else ""),
+            r.bookkeeping_ref or "",
+            (r.notes or "").replace("\n", " ").replace("\r", " "),
+        ])
+
+    csv_bytes = buf.getvalue().encode("utf-8-sig")  # BOM so Excel opens it correctly
+    fn = f"receipts-{datetime.utcnow():%Y%m%d-%H%M%S}.csv"
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fn}"'},
+    )

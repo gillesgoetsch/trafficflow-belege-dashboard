@@ -10,7 +10,7 @@ import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Download, RefreshCw, Trash2, FilterX } from "lucide-react";
+import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye } from "lucide-react";
 import { fmtDate, fmtMoney } from "../lib/format";
 import { ReceiptDetailPanel } from "../components/receipts/ReceiptDetailPanel";
 import { toast } from "../components/ui/toaster";
@@ -25,26 +25,52 @@ export default function Inbox() {
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | undefined>(undefined);
   const [brand, setBrand] = useState<string | undefined>(undefined);
+  const [booked, setBooked] = useState<string | undefined>(undefined);
+  const [datePreset, setDatePreset] = useState<string>("");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
   const qc = useQueryClient();
 
-  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [orgId, search, providerId, status, paymentMethod, brand]);
+  useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [orgId, search, providerId, status, paymentMethod, brand, booked, dateFrom, dateTo]);
+
+  // Date preset → from/to
+  useEffect(() => {
+    if (!datePreset) return;
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    let from: Date | null = null, to: Date | null = null;
+    switch (datePreset) {
+      case "this_month": from = new Date(y, m, 1); to = new Date(y, m + 1, 0); break;
+      case "last_month": from = new Date(y, m - 1, 1); to = new Date(y, m, 0); break;
+      case "this_quarter": { const q = Math.floor(m / 3); from = new Date(y, q * 3, 1); to = new Date(y, q * 3 + 3, 0); break; }
+      case "last_quarter": { const q = Math.floor(m / 3) - 1; const ny = q < 0 ? y - 1 : y; const nq = (q + 4) % 4; from = new Date(ny, nq * 3, 1); to = new Date(ny, nq * 3 + 3, 0); break; }
+      case "ytd": from = new Date(y, 0, 1); to = now; break;
+      case "last_year": from = new Date(y - 1, 0, 1); to = new Date(y - 1, 11, 31); break;
+    }
+    if (from && to) { setDateFrom(fmt(from)); setDateTo(fmt(to)); }
+  }, [datePreset]);
 
   const { data: providers } = useQuery<Provider[]>({ queryKey: ["providers"], queryFn: () => api("/providers") });
 
+  const queryParams = {
+    organization_id: orgId ?? undefined,
+    provider_id: providerId ?? undefined,
+    status,
+    payment_method: paymentMethod,
+    brand: brand,
+    booked: booked,
+    date_from: dateFrom || undefined,
+    date_to: dateTo || undefined,
+    search: search || undefined,
+  };
+
   const { data, isFetching } = useQuery<ReceiptList>({
-    queryKey: ["receipts", { orgId, page, search, providerId, status, paymentMethod, brand }],
-    queryFn: () => api("/receipts", { query: {
-      organization_id: orgId ?? undefined,
-      provider_id: providerId ?? undefined,
-      status,
-      payment_method: paymentMethod,
-      brand: brand,
-      search: search || undefined,
-      page, page_size: PAGE_SIZE,
-    }}),
+    queryKey: ["receipts", { ...queryParams, page }],
+    queryFn: () => api("/receipts", { query: { ...queryParams, page, page_size: PAGE_SIZE } }),
   });
 
   const items = data?.items ?? [];
@@ -73,24 +99,38 @@ export default function Inbox() {
     });
   };
 
+  const tokenHeader = () => ({ ...(localStorage.getItem("belege_token") ? { Authorization: `Bearer ${localStorage.getItem("belege_token")}` } : {}) });
+
+  const downloadBlob = async (path: string, init: RequestInit, fallbackName: string) => {
+    const res = await fetch(`${apiBase}${path}`, {
+      credentials: "include",
+      headers: { ...tokenHeader(), ...(init.headers || {}) },
+      ...init,
+    });
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+    // Try to grab filename from Content-Disposition
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename="?([^"]+)"?/.exec(cd);
+    const name = m?.[1] || fallbackName;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const bulk = useMutation({
-    mutationFn: async (action: "zip" | "reprocess" | "resync" | "delete") => {
+    mutationFn: async (action: "zip" | "reprocess" | "resync" | "delete" | "book") => {
       const ids = Array.from(selectedIds);
       if (action === "zip") {
-        const res = await fetch(`${apiBase}/receipts/bulk/zip`, {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json", ...(localStorage.getItem("belege_token") ? { Authorization: `Bearer ${localStorage.getItem("belege_token")}` } : {}) },
+        await downloadBlob("/receipts/bulk/zip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ids }),
-        });
-        if (!res.ok) throw new Error("Download failed");
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = `receipts-${Date.now()}.zip`;
-        a.click(); URL.revokeObjectURL(url);
+        }, `receipts-${Date.now()}.zip`);
         return;
       }
-      await api(`/receipts/bulk/${action}`, { method: action === "delete" ? "POST" : "POST", body: { ids } });
+      await api(`/receipts/bulk/${action}`, { method: "POST", body: { ids } });
     },
     onSuccess: (_, action) => {
       toast({ title: `Bulk ${action} ok`, variant: "success" });
@@ -100,6 +140,37 @@ export default function Inbox() {
     onError: (e: any) => toast({ title: "Bulk action failed", description: e.message, variant: "destructive" }),
   });
 
+  // Export filtered set as CSV (server-side filter)
+  const exportCsv = async () => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(queryParams)) {
+      if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+    }
+    await downloadBlob(`/receipts/export/csv?${qs.toString()}`, { method: "GET" },
+      `receipts-${new Date().toISOString().slice(0,10)}.csv`);
+  };
+
+  // Export filtered set as ZIP (uses /bulk/zip with all currently-shown IDs across pages)
+  const exportZipAll = async () => {
+    // Fetch all IDs matching current filters (page through if needed)
+    const allIds: number[] = [];
+    let p = 1;
+    while (true) {
+      const r: ReceiptList = await api("/receipts", { query: { ...queryParams, page: p, page_size: 200 } });
+      allIds.push(...r.items.map((x) => x.id));
+      if (allIds.length >= r.total) break;
+      p += 1;
+      if (p > 50) break; // safety stop
+    }
+    if (allIds.length === 0) { toast({ title: "Nothing to export" }); return; }
+    await downloadBlob("/receipts/bulk/zip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: allIds }),
+    }, `receipts-${new Date().toISOString().slice(0,10)}.zip`);
+    toast({ title: `Downloaded ${allIds.length} receipts`, variant: "success" });
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
@@ -107,14 +178,20 @@ export default function Inbox() {
           <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
           <p className="text-sm text-muted-foreground">{total} receipts {isFetching && "· refreshing…"}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {selectedIds.size > 0 ? (
             <>
               <span className="text-sm text-muted-foreground">{selectedIds.size} selected</span>
               <Button size="sm" variant="outline" onClick={() => bulk.mutate("zip")}><Download className="h-3.5 w-3.5 mr-1" /> ZIP</Button>
+              <Button size="sm" variant="outline" onClick={() => bulk.mutate("book")}><BookCheck className="h-3.5 w-3.5 mr-1" /> Mark booked</Button>
               <Button size="sm" variant="outline" onClick={() => bulk.mutate("reprocess")}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Reprocess</Button>
               <Button size="sm" variant="outline" onClick={() => bulk.mutate("resync")}>Re-sync</Button>
               <Button size="sm" variant="destructive" onClick={() => bulk.mutate("delete")}><Trash2 className="h-3.5 w-3.5 mr-1" /> Delete</Button>
+            </>
+          ) : (
+            <>
+              <Button size="sm" variant="outline" onClick={exportCsv}><FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> Export CSV</Button>
+              <Button size="sm" variant="outline" onClick={exportZipAll}><Download className="h-3.5 w-3.5 mr-1" /> Download all (ZIP)</Button>
             </>
           )}
         </div>
@@ -162,8 +239,29 @@ export default function Inbox() {
             <SelectItem value="trafficflow">TrafficFlow</SelectItem>
           </SelectContent>
         </Select>
-        {(search || providerId || status || paymentMethod || brand) && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setProviderId(null); setStatus(undefined); setPaymentMethod(undefined); setBrand(undefined); }}>
+        <Select value={booked ?? "any"} onValueChange={(v) => setBooked(v === "any" ? undefined : v)}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Booked" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">All</SelectItem>
+            <SelectItem value="no">Open (not booked)</SelectItem>
+            <SelectItem value="yes">Booked</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={datePreset} onValueChange={setDatePreset}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Date range" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="this_month">This month</SelectItem>
+            <SelectItem value="last_month">Last month</SelectItem>
+            <SelectItem value="this_quarter">This quarter</SelectItem>
+            <SelectItem value="last_quarter">Last quarter</SelectItem>
+            <SelectItem value="ytd">Year to date</SelectItem>
+            <SelectItem value="last_year">Last year</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDatePreset(""); }} className="w-36" title="From" />
+        <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setDatePreset(""); }} className="w-36" title="To" />
+        {(search || providerId || status || paymentMethod || brand || booked || dateFrom || dateTo) && (
+          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setProviderId(null); setStatus(undefined); setPaymentMethod(undefined); setBrand(undefined); setBooked(undefined); setDateFrom(""); setDateTo(""); setDatePreset(""); }}>
             <FilterX className="h-3.5 w-3.5 mr-1" /> Clear
           </Button>
         )}
@@ -181,7 +279,8 @@ export default function Inbox() {
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Payment</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Layer</TableHead>
+              <TableHead>Booked</TableHead>
+              <TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -205,11 +304,21 @@ export default function Inbox() {
                 <TableCell className="text-right whitespace-nowrap">{fmtMoney(r.amount, r.currency)}</TableCell>
                 <TableCell><PaymentBadge pm={r.payment_method} /></TableCell>
                 <TableCell><StatusBadge status={r.status} /></TableCell>
-                <TableCell><LayerBadge layer={r.classification_layer} /></TableCell>
+                <TableCell>{r.booked_at ? <Badge variant="success">booked</Badge> : <span className="text-muted-foreground text-xs">open</span>}</TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-0.5">
+                    <a href={`${apiBase}/receipts/${r.id}/file`} target="_blank" rel="noreferrer" title="Preview">
+                      <Button size="icon" variant="ghost" className="h-7 w-7"><Eye className="h-3.5 w-3.5" /></Button>
+                    </a>
+                    <a href={`${apiBase}/receipts/${r.id}/file`} download={r.filename} title="Download">
+                      <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="h-3.5 w-3.5" /></Button>
+                    </a>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
             {!items.length && (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-12">No receipts yet</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">No receipts match the current filters</TableCell></TableRow>
             )}
           </TableBody>
         </Table>

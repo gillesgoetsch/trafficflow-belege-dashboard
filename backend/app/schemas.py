@@ -219,6 +219,11 @@ class ReceiptOut(_ORM):
     status: ReceiptStatus
     payment_method: PaymentMethod
     brand: str | None
+    notes: str | None = None
+    vat_rate: Decimal | None = None
+    vat_amount: Decimal | None = None
+    booked_at: datetime | None = None
+    bookkeeping_ref: str | None = None
     review_reason: str | None
     created_at: datetime
 
@@ -239,6 +244,11 @@ class ReceiptPatch(BaseModel):
     status: ReceiptStatus | None = None
     payment_method: PaymentMethod | None = None
     brand: str | None = None
+    notes: str | None = None
+    vat_rate: Decimal | None = None
+    vat_amount: Decimal | None = None
+    booked_at: datetime | None = None
+    bookkeeping_ref: str | None = None
 
 
 class ReceiptListOut(BaseModel):
