@@ -449,18 +449,29 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
                            "June", "July", "August", "September", "October",
                            "November", "December"]
             candidates = {
+                # ISO + DD-MM-YYYY family
                 f"{y}-{m:02d}-{d:02d}",
                 f"{d:02d}-{m:02d}-{y}",
                 f"{d:02d}.{m:02d}.{y}",
                 f"{d:02d}/{m:02d}/{y}",
                 f"{m:02d}/{d:02d}/{y}",
-                f"{d:02d}-{months_en[m]}-{y}",
-                f"{d}-{months_en[m]}-{y}",
-                f"{months_full[m]} {d}, {y}",
-                f"{months_full[m]} {d:02d}, {y}",
-                # Also accept loose 'M D, YYYY' variants
                 f"{m}/{d}/{y}",
                 f"{d}/{m}/{y}",
+                # Month-abbreviation family with dashes / spaces (US + EU)
+                f"{d:02d}-{months_en[m]}-{y}",
+                f"{d}-{months_en[m]}-{y}",
+                f"{months_en[m]} {d:02d}, {y}",
+                f"{months_en[m]} {d}, {y}",
+                f"{months_en[m]} {d:02d} {y}",
+                f"{months_en[m]} {d} {y}",
+                f"{d:02d} {months_en[m]} {y}",
+                f"{d} {months_en[m]} {y}",
+                # Full month name
+                f"{months_full[m]} {d}, {y}",
+                f"{months_full[m]} {d:02d}, {y}",
+                f"{months_full[m]} {d}, {y}",
+                f"{d} {months_full[m]} {y}",
+                f"{d:02d} {months_full[m]} {y}",
             }
             up = pdf_text.upper()
             if not any(c.upper() in up for c in candidates):
