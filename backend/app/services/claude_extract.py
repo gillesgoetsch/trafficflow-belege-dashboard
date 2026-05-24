@@ -147,6 +147,16 @@ AMOUNT RULES
 - Ignore numbers inside product names: "Porsche 911", "Boeing 747", "iPhone 13".
 - Decimal point in OUTPUT: convert "119,10" → "119.10".
 - Do NOT include currency symbol in the amount string.
+- currency MUST be the symbol/code printed DIRECTLY next to the total
+  amount ("17,04 EUR" → EUR; "CHF 296.80" → CHF; "$99.00" → USD).
+  Do NOT infer currency from the customer's country.
+
+------------------------------------------------------------------
+CUSTOMER HINT
+------------------------------------------------------------------
+customer_hint is the BILLED-TO entity NAME ONLY ("Rechnung an", "Bill to").
+It is NOT a label, NOT an amount, NOT an address, NOT a date. Return
+null if no clearly named billed-to entity exists.
 
 ------------------------------------------------------------------
 Return ONLY the JSON object — no preamble, no markdown fences."""

@@ -134,12 +134,26 @@ NOT a customer number, NOT a tax ID. If multiple candidates exist,
 prefer the one in the document title/heading. If no clearly-labelled
 identifier exists, return null.
 
-AMOUNT RULES:
+AMOUNT + CURRENCY RULES:
 
 - total_amount = GROSS / Brutto / total-including-VAT.
 - If both Netto and Brutto are shown, return Brutto.
 - Ignore numbers in product names: "Porsche 911", "iPhone 13".
 - Convert "119,10" to "119.10". No currency symbol in the amount string.
+- currency MUST be the symbol/code printed DIRECTLY next to the total
+  amount (e.g. "17,04 EUR" → currency=EUR; "CHF 296.80" → CHF;
+  "$99.00" → USD; "€44.59" → EUR). Do NOT infer currency from the
+  customer address or the invoice issuer's country — a Swiss company
+  is often billed in EUR or USD by foreign vendors. The currency is
+  whatever the merchant printed next to their total.
+
+CUSTOMER HINT RULES:
+
+- customer_hint should be the BILLED-TO entity's NAME ONLY (e.g.
+  "TrafficFlow GmbH", "Gilles Goetsch", "SicherSatt AG"). It is the
+  name on the "Rechnung an", "Bill to", "Customer", "Billed to" line.
+- It is NOT a label, NOT an amount, NOT an address, NOT a date. If you
+  cannot find a clear billed-to name, return null.
 
 ------------------------------------------------------------------
 DOCUMENT TEXT:
@@ -405,6 +419,16 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
             return False, f"date_too_far_future:{d}"
     except Exception:  # noqa: BLE001
         return False, "date_unparseable"
+
+    # Currency-consistency guard — the extracted currency must appear in the
+    # PDF text (as code or common symbol). Catches the model defaulting to
+    # CHF for a Swiss customer even when the invoice itself is in EUR/USD.
+    if pdf_text and r.currency:
+        cur = r.currency.upper()
+        symbol_map = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF", "JPY": "¥"}
+        sym = symbol_map.get(cur, "")
+        if cur not in pdf_text.upper() and (not sym or sym not in pdf_text):
+            return False, f"currency_not_in_pdf:{cur}"
 
     # Hallucination guard — the extracted amount MUST appear verbatim in the
     # PDF text. This catches the failure mode where the model invents an
