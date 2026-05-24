@@ -20,6 +20,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0009_inbound_folders"
 down_revision: Union[str, None] = "0008_brand_routes_skip_rules"
@@ -28,15 +29,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "CREATE TYPE inbound_folder_type AS ENUM ("
-        "'nextcloud_share', 'onedrive_share', 'gdrive_share', 'local_mount'"
-        ")"
+    folder_type = postgresql.ENUM(
+        "nextcloud_share", "onedrive_share", "gdrive_share", "local_mount",
+        name="inbound_folder_type",
     )
-    op.execute(
-        "CREATE TYPE inbound_file_status AS ENUM ("
-        "'pending', 'processing', 'processed', 'failed', 'not_a_receipt'"
-        ")"
+    file_status = postgresql.ENUM(
+        "pending", "processing", "processed", "failed", "not_a_receipt",
+        name="inbound_file_status",
+    )
+    folder_type.create(op.get_bind(), checkfirst=True)
+    file_status.create(op.get_bind(), checkfirst=True)
+
+    folder_type_col = postgresql.ENUM(
+        "nextcloud_share", "onedrive_share", "gdrive_share", "local_mount",
+        name="inbound_folder_type", create_type=False,
+    )
+    file_status_col = postgresql.ENUM(
+        "pending", "processing", "processed", "failed", "not_a_receipt",
+        name="inbound_file_status", create_type=False,
     )
 
     op.create_table(
@@ -51,10 +61,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "type",
-            sa.Enum(
-                "nextcloud_share", "onedrive_share", "gdrive_share", "local_mount",
-                name="inbound_folder_type", create_type=False,
-            ),
+            folder_type_col,
             nullable=False,
         ),
         sa.Column("name", sa.String(128), nullable=False),
@@ -95,10 +102,7 @@ def upgrade() -> None:
         sa.Column("remote_mtime", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(
-                "pending", "processing", "processed", "failed", "not_a_receipt",
-                name="inbound_file_status", create_type=False,
-            ),
+            file_status_col,
             nullable=False,
             server_default="pending",
         ),

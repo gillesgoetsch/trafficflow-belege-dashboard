@@ -537,7 +537,8 @@ class InboundFolder(Base, TimestampMixin):
         ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False,
     )
     type: Mapped[InboundFolderType] = mapped_column(
-        Enum(InboundFolderType, name="inbound_folder_type"),
+        Enum(InboundFolderType, name="inbound_folder_type", create_type=False,
+             values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -562,7 +563,7 @@ class InboundFile(Base, TimestampMixin):
     size: Mapped[int | None] = mapped_column(BigInteger)
     remote_mtime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[InboundFileStatus] = mapped_column(
-        Enum(InboundFileStatus, name="inbound_file_status",
+        Enum(InboundFileStatus, name="inbound_file_status", create_type=False,
              values_callable=lambda x: [e.value for e in x]),
         default=InboundFileStatus.pending, nullable=False,
     )
