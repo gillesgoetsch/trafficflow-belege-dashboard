@@ -21,6 +21,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0008_brand_routes_skip_rules"
 down_revision: Union[str, None] = "0007_bexio_sync"
@@ -29,7 +30,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    match_type_enum = sa.Enum(
+    # match_type enum already exists from migration 0001 — reuse it.
+    match_type_enum = postgresql.ENUM(
         "sender_domain",
         "sender_email",
         "subject_contains",
@@ -37,7 +39,7 @@ def upgrade() -> None:
         "plus_alias",
         "sender_contains",
         name="match_type",
-        create_type=False,  # already exists
+        create_type=False,
     )
 
     op.create_table(
