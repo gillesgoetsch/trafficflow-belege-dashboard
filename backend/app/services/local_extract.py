@@ -67,7 +67,7 @@ JSON shape (every field required, use null when unknown):
   "currency": "CHF" | "EUR" | "USD" | "GBP" | string | null,
   "vat_rate": "8.1" | "2.6" | "0" | null,
   "vat_amount": "12.34" | null,
-  "invoice_number": string | null,
+  "invoice_number": string | null,  // see INVOICE NUMBER RULES below
   "language": "de" | "en" | "fr" | "it" | null,
   "notes": string | null
 }
@@ -123,6 +123,16 @@ CRITICAL:
 3. For Twint / PostFinance / e-payment screenshots: look for "Datum",
    "ausgeführt am", or a stamped date. If you can't read it confidently,
    return null — DO NOT use today's date.
+
+INVOICE NUMBER RULES:
+
+invoice_number is the document's OWN identifier, printed near the top
+and labelled with one of: "Invoice #", "Invoice number", "Rechnung Nr.",
+"Rechnungs-Nr.", "Auftrag" (Digitec/Galaxus), "Bestell-Nr.", "Receipt
+number", "Belegnummer". It is NOT an article number, NOT a product code,
+NOT a customer number, NOT a tax ID. If multiple candidates exist,
+prefer the one in the document title/heading. If no clearly-labelled
+identifier exists, return null.
 
 AMOUNT RULES:
 

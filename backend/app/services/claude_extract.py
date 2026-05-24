@@ -129,6 +129,17 @@ CRITICAL date rules:
    the image itself has none, return null.
 
 ------------------------------------------------------------------
+INVOICE NUMBER RULES
+------------------------------------------------------------------
+invoice_number is the document's OWN identifier, printed near the top
+and labelled with one of: "Invoice #", "Invoice number", "Rechnung Nr.",
+"Rechnungs-Nr.", "Auftrag" (Digitec/Galaxus), "Bestell-Nr.", "Receipt
+number", "Belegnummer". It is NOT an article number, NOT a product code,
+NOT a customer number, NOT a tax ID, NOT a VAT number. If multiple
+candidates exist, prefer the one in the document title/heading. If no
+clearly-labelled identifier exists, return null.
+
+------------------------------------------------------------------
 AMOUNT RULES
 ------------------------------------------------------------------
 - total_amount = GROSS / Brutto / total-including-VAT.
