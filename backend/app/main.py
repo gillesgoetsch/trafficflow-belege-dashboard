@@ -16,6 +16,7 @@ from app.api import (
     dashboard,
     deploy,
     health,
+    inbound_folders,
     mailboxes,
     org_routing as org_routing_api,
     organizations,
@@ -83,6 +84,7 @@ app.include_router(upload.router, prefix=f"{api_prefix}/upload", tags=["upload"]
 app.include_router(dashboard.router, prefix=f"{api_prefix}/dashboard", tags=["dashboard"])
 app.include_router(users_api.router, prefix=f"{api_prefix}/users", tags=["users"])
 app.include_router(org_routing_api.router, prefix=f"{api_prefix}/org-routing", tags=["org-routing"])
+app.include_router(inbound_folders.router, prefix=f"{api_prefix}/inbound-folders", tags=["inbound-folders"])
 app.include_router(deploy.router, prefix="/_deploy", tags=["deploy"])
 
 

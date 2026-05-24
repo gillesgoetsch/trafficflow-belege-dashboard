@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     onedrive_client_secret: str = ""
     onedrive_redirect_uri: str = ""
 
+    # Inbound cloud folders
+    ms_client_id: str = ""           # for OneDrive share connector (app-only)
+    ms_client_secret: str = ""
+    ms_tenant_id: str = "common"
+    google_api_key: str = ""         # for Google Drive share connector
+
     # Deploy webhook
     deploy_webhook_secret: str = "change-me-webhook-secret"
     deploy_branch: str = "main"

@@ -358,6 +358,53 @@ class ReviewDecision(BaseModel):
     create_rule: bool = False
 
 
+# --- Inbound folders ---
+
+
+class InboundFolderIn(BaseModel):
+    organization_id: int
+    type: str  # InboundFolderType value
+    name: str
+    share_url: str
+    batch_interval_minutes: int = 30
+    enabled: bool = True
+    password: str | None = None  # Nextcloud password-protected share
+
+
+class InboundFolderPatch(BaseModel):
+    name: str | None = None
+    share_url: str | None = None
+    batch_interval_minutes: int | None = None
+    enabled: bool | None = None
+    password: str | None = None
+
+
+class InboundFolderOut(_ORM):
+    id: int
+    organization_id: int
+    type: str
+    name: str
+    share_url: str
+    enabled: bool
+    batch_interval_minutes: int
+    last_poll_at: datetime | None
+    last_error: str | None
+
+
+class InboundFileOut(_ORM):
+    id: int
+    folder_id: int
+    remote_id: str
+    filename: str
+    sha256: str | None
+    size: int | None
+    remote_mtime: datetime | None
+    status: str
+    receipt_id: int | None
+    processed_at: datetime | None
+    error: str | None
+
+
 # --- Dashboard ---
 
 

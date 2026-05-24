@@ -289,3 +289,37 @@ export interface DashboardCharts {
   top_providers: { provider_id: number | null; provider: string; count: number; total_amount: string }[];
   by_payment_method: { payment_method: string; count: number; total_amount: string }[];
 }
+
+export type InboundFolderType = "nextcloud_share" | "onedrive_share" | "gdrive_share" | "local_mount";
+export const INBOUND_TYPE_LABEL: Record<InboundFolderType, string> = {
+  nextcloud_share: "Nextcloud (Freigabelink)",
+  onedrive_share: "OneDrive (Freigabelink)",
+  gdrive_share: "Google Drive (Freigabelink)",
+  local_mount: "Lokaler Pfad",
+};
+
+export interface InboundFolder {
+  id: number;
+  organization_id: number;
+  type: InboundFolderType;
+  name: string;
+  share_url: string;
+  enabled: boolean;
+  batch_interval_minutes: number;
+  last_poll_at: string | null;
+  last_error: string | null;
+}
+
+export interface InboundFile {
+  id: number;
+  folder_id: number;
+  remote_id: string;
+  filename: string;
+  sha256: string | null;
+  size: number | null;
+  remote_mtime: string | null;
+  status: "pending" | "processing" | "processed" | "failed" | "not_a_receipt";
+  receipt_id: number | null;
+  processed_at: string | null;
+  error: string | null;
+}

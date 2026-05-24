@@ -509,3 +509,69 @@ class BrandRoute(Base, TimestampMixin):
     match_value: Mapped[str] = mapped_column(String(512), nullable=False)
     brand: Mapped[str | None] = mapped_column(String(64))
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+
+
+# --- Inbound cloud folders ---------------------------------------------------
+
+
+class InboundFolderType(str, enum.Enum):
+    nextcloud_share = "nextcloud_share"
+    onedrive_share = "onedrive_share"
+    gdrive_share = "gdrive_share"
+    local_mount = "local_mount"
+
+
+class InboundFileStatus(str, enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    processed = "processed"
+    failed = "failed"
+    not_a_receipt = "not_a_receipt"
+
+
+class InboundFolder(Base, TimestampMixin):
+    """A cloud folder (shared link) we poll for new files to ingest."""
+    __tablename__ = "inbound_folders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False,
+    )
+    type: Mapped[InboundFolderType] = mapped_column(
+        Enum(InboundFolderType, name="inbound_folder_type"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    share_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    config_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted JSON
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    batch_interval_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+
+
+class InboundFile(Base, TimestampMixin):
+    """Per-file state for files seen in an inbound folder."""
+    __tablename__ = "inbound_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[int] = mapped_column(
+        ForeignKey("inbound_folders.id", ondelete="CASCADE"), index=True, nullable=False,
+    )
+    remote_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    size: Mapped[int | None] = mapped_column(BigInteger)
+    remote_mtime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[InboundFileStatus] = mapped_column(
+        Enum(InboundFileStatus, name="inbound_file_status",
+             values_callable=lambda x: [e.value for e in x]),
+        default=InboundFileStatus.pending, nullable=False,
+    )
+    receipt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("receipts.id", ondelete="SET NULL"), nullable=True,
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(String(1000))
+
+    __table_args__ = (
+        UniqueConstraint("folder_id", "remote_id", name="uq_inbound_file_folder_remote"),
+    )

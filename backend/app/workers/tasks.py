@@ -21,11 +21,14 @@ from arq.connections import RedisSettings
 from app.config import settings
 from app.core.logging import get_logger, setup as setup_logging
 from app.workers.pipelines import (
+    poll_all_inbound_folders,
     poll_all_mailboxes,
+    process_inbound_file,
     process_message,
     process_uploaded_receipt,
     requeue_stuck_emails,
     retry_failed_syncs,
+    scan_inbound_folder,
     sync_mailbox,
     sync_receipt_all_connectors,
     sync_receipt_to_connector,
@@ -53,6 +56,9 @@ class WorkerSettings:
         poll_all_mailboxes,
         retry_failed_syncs,
         requeue_stuck_emails,
+        poll_all_inbound_folders,
+        scan_inbound_folder,
+        process_inbound_file,
     ]
     cron_jobs = [
         cron(poll_all_mailboxes, minute=set(range(0, 60))),  # every minute
@@ -60,6 +66,9 @@ class WorkerSettings:
         # Catch emails that got into email_messages but whose process_message
         # job was lost (e.g. worker killed during a deploy). Runs every 3 min.
         cron(requeue_stuck_emails, minute={0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57}),
+        # Inbound cloud-folder polling — check every minute, each folder
+        # decides per-folder whether its batch_interval_minutes has elapsed.
+        cron(poll_all_inbound_folders, minute=set(range(0, 60))),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     job_timeout = 600

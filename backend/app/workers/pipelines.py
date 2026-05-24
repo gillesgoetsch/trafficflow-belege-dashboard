@@ -221,6 +221,350 @@ async def requeue_stuck_emails(ctx):
     return count
 
 
+# --- Inbound cloud folders --------------------------------------------------
+
+
+async def poll_all_inbound_folders(ctx):
+    """Every minute: enqueue scan for any inbound folder whose interval has elapsed."""
+    from app.db.models import InboundFolder
+
+    redis = ctx["redis"]
+    async with SessionLocal() as db:
+        folders = (await db.scalars(
+            select(InboundFolder).where(InboundFolder.enabled.is_(True))
+        )).all()
+        for fd in folders:
+            if fd.last_poll_at is None:
+                due = True
+            else:
+                last = fd.last_poll_at
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=UTC)
+                due = (datetime.now(UTC) - last) >= timedelta(minutes=fd.batch_interval_minutes)
+            if due:
+                await redis.enqueue_job(
+                    "scan_inbound_folder", fd.id,
+                    _job_id=f"scan_inbound:{fd.id}",
+                )
+    return len(folders)
+
+
+async def scan_inbound_folder(ctx, folder_id: int):
+    """List remote files, dedup against inbound_files, enqueue ingestion for new ones."""
+    import hashlib as _hl
+
+    from app.core.encryption import decrypt_json
+    from app.db.models import InboundFile, InboundFileStatus, InboundFolder
+    from app.services.inbound import build_connector
+
+    redis = ctx["redis"]
+    async with SessionLocal() as db:
+        fd: InboundFolder | None = await db.get(InboundFolder, folder_id)
+        if not fd or not fd.enabled:
+            return {"ok": False, "reason": "missing_or_disabled"}
+
+        config = {}
+        if fd.config_enc:
+            try:
+                config = decrypt_json(fd.config_enc) or {}
+            except Exception:  # noqa: BLE001
+                config = {}
+
+        try:
+            conn = build_connector(fd.type, fd.share_url, config)
+            remote_files = await conn.list_files()
+        except Exception as e:  # noqa: BLE001
+            fd.last_error = str(e)[:1000]
+            fd.last_poll_at = datetime.now(UTC)
+            await db.commit()
+            logger.error("scan_inbound.failed", folder_id=fd.id, error=str(e))
+            return {"ok": False, "error": str(e)}
+
+        # Diff against known files
+        known = {
+            (r.remote_id): r for r in (await db.scalars(
+                select(InboundFile).where(InboundFile.folder_id == fd.id)
+            )).all()
+        }
+        new_count = 0
+        for rf in remote_files:
+            if rf.remote_id in known:
+                continue
+            rec = InboundFile(
+                folder_id=fd.id,
+                remote_id=rf.remote_id,
+                filename=rf.filename,
+                size=rf.size,
+                remote_mtime=rf.mtime,
+                status=InboundFileStatus.pending,
+            )
+            db.add(rec)
+            await db.flush()
+            await redis.enqueue_job(
+                "process_inbound_file", rec.id,
+                _job_id=f"process_inbound:{rec.id}",
+            )
+            new_count += 1
+
+        fd.last_poll_at = datetime.now(UTC)
+        fd.last_error = None
+        await db.commit()
+        logger.info("scan_inbound.done", folder_id=fd.id, new_files=new_count, total=len(remote_files))
+        return {"ok": True, "new_files": new_count, "total": len(remote_files)}
+
+
+async def process_inbound_file(ctx, inbound_file_id: int):
+    """Download a remote file and run it through the receipt pipeline.
+
+    Reuses the same metadata extraction / OCR / classification logic as the
+    email path, but the source is 'cloud_folder'. When no receipt indicators
+    are found, the document is stored with document_type='document' instead
+    of being forced into a 0-amount receipt.
+    """
+    import hashlib as _hl
+
+    from app.core.encryption import decrypt_json
+    from app.db.models import (
+        DocumentType,
+        InboundFile,
+        InboundFileStatus,
+        InboundFolder,
+    )
+    from app.services.inbound import build_connector
+
+    async with SessionLocal() as db:
+        rec: InboundFile | None = await db.get(InboundFile, inbound_file_id)
+        if not rec:
+            return {"ok": False, "reason": "no_file"}
+        fd = await db.get(InboundFolder, rec.folder_id)
+        if not fd:
+            rec.status = InboundFileStatus.failed
+            rec.error = "missing_folder"
+            await db.commit()
+            return {"ok": False}
+
+        rec.status = InboundFileStatus.processing
+        await db.commit()
+
+        try:
+            config = decrypt_json(fd.config_enc) if fd.config_enc else {}
+        except Exception:  # noqa: BLE001
+            config = {}
+
+        try:
+            conn = build_connector(fd.type, fd.share_url, config or {})
+            data = await conn.download_file(rec.remote_id)
+        except Exception as e:  # noqa: BLE001
+            rec.status = InboundFileStatus.failed
+            rec.error = str(e)[:1000]
+            await db.commit()
+            logger.error("process_inbound.download_failed", file_id=rec.id, error=str(e))
+            return {"ok": False, "error": str(e)}
+
+        sha = _hl.sha256(data).hexdigest()
+        # Hash-based dedup across folders + email path
+        existing_receipt = (await db.scalars(
+            select(Receipt).where(Receipt.file_sha256 == sha)
+        )).first()
+        if existing_receipt:
+            rec.sha256 = sha
+            rec.status = InboundFileStatus.processed
+            rec.receipt_id = existing_receipt.id
+            rec.processed_at = datetime.now(UTC)
+            await db.commit()
+            return {"ok": True, "deduped": True, "receipt_id": existing_receipt.id}
+        rec.sha256 = sha
+
+        # Determine document_date — prefer extraction, fall back to remote mtime
+        org = await db.get(Organization, fd.organization_id)
+        doc_date = rec.remote_mtime or datetime.now(UTC)
+
+        # Write the raw bytes to a stable location so the pipeline below can
+        # read them with the same code paths the email worker uses.
+        tmp_dir = settings.storage_path / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        is_pdf = rec.filename.lower().endswith(".pdf")
+        if is_pdf:
+            tmp_pdf = tmp_dir / f"inbound-{rec.id}.pdf"
+            tmp_pdf.write_bytes(data)
+            pdf_bytes = data
+        else:
+            # Image — convert to PDF
+            from io import BytesIO
+            from PIL import Image
+            try:
+                img = Image.open(BytesIO(data)).convert("RGB")
+                buf = BytesIO()
+                img.save(buf, format="PDF")
+                pdf_bytes = buf.getvalue()
+            except Exception as e:  # noqa: BLE001
+                rec.status = InboundFileStatus.failed
+                rec.error = f"image_decode: {e}"
+                await db.commit()
+                return {"ok": False, "error": str(e)}
+            tmp_pdf = tmp_dir / f"inbound-{rec.id}.pdf"
+            tmp_pdf.write_bytes(pdf_bytes)
+
+        # Extract text (native or OCR) + metadata
+        from app.services.ocr import is_likely_scanned, native_text, ocr_pdf
+        from app.services.metadata_extract import extract as extract_meta
+
+        meta_text = ""
+        ocr_data = None
+        try:
+            if is_pdf and is_likely_scanned(tmp_pdf):
+                try:
+                    ocr_data = await ocr_pdf(tmp_pdf)
+                    meta_text = ocr_data.text
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("inbound.ocr_failed", file_id=rec.id, error=str(e))
+                    meta_text = ""
+            else:
+                meta_text = native_text(tmp_pdf)
+        finally:
+            try:
+                tmp_pdf.unlink()
+            except OSError:
+                pass
+
+        meta = extract_meta(meta_text or "")
+
+        # Classification — feed the PDF text as 'body_text', filename as 'subject'.
+        # Skip rules + brand routes still apply (they check the same haystacks).
+        from app.services.classifier import ClassificationInput, classify
+        from app.services.classifier import resolve_provider_from_slug
+
+        inp = ClassificationInput(
+            sender_email=None, sender_name=None,
+            subject=rec.filename, body_text=meta_text or "",
+            organization_id=fd.organization_id,
+        )
+        cls = await classify(db, inp)
+        provider = await db.get(Provider, cls.provider_id) if cls.provider_id else None
+        if not provider and ocr_data and getattr(ocr_data, "provider_slug", None):
+            provider = await resolve_provider_from_slug(db, ocr_data.provider_slug)
+        provider_id = provider.id if provider else None
+        prov_name = provider.display_name if provider else (cls.provider_slug or "Unknown")
+
+        # Brand route override (same logic as email path)
+        effective_org_id = fd.organization_id
+        brand_override = None
+        route = await find_brand_route(
+            db, fd.organization_id, provider_id,
+            None, rec.filename, meta_text or "", None,
+        )
+        if route:
+            effective_org_id = route.target_organization_id
+            brand_override = route.brand
+            org = await db.get(Organization, effective_org_id)
+
+        # Sub-client resolution
+        from app.services.multi_account import ResolveInput, resolve_client
+        sub_client = await resolve_client(db, ResolveInput(
+            organization_id=effective_org_id,
+            provider_id=provider_id,
+            to_address=None, sender_email=None,
+            subject=rec.filename, body_text=meta_text or "",
+        ))
+
+        # OCR amount/date if it filled them in
+        if ocr_data:
+            if ocr_data.date and not meta.date:
+                try:
+                    from dateutil import parser as _dp
+                    meta.date = _dp.parse(ocr_data.date)
+                except Exception:
+                    pass
+            if ocr_data.amount and not meta.amount:
+                try:
+                    from decimal import Decimal
+                    meta.amount = Decimal(str(ocr_data.amount).replace(",", "."))
+                except Exception:
+                    pass
+            if ocr_data.currency and not meta.currency:
+                meta.currency = ocr_data.currency
+            if ocr_data.invoice_number and not meta.invoice_number:
+                meta.invoice_number = ocr_data.invoice_number
+
+        currency = meta.currency or (org.default_currency if org else "CHF")
+        if meta.date:
+            doc_date = meta.date
+
+        # Determine document_type: receipt vs archive document
+        has_receipt_indicator = bool(meta.amount or meta.invoice_number or (ocr_data and ocr_data.is_receipt))
+        document_type = "receipt" if has_receipt_indicator else "document"
+
+        # Build filename + final path
+        filename = build_filename(
+            template=(org.filename_template if org else "{date}_{provider}_{client}_{amount}-{currency}"),
+            date=doc_date, provider=prov_name,
+            client=(sub_client.name if sub_client else None),
+            amount=meta.amount, currency=currency, invoice_number=meta.invoice_number,
+        )
+        out_dir = settings.storage_path / f"org-{effective_org_id}" / f"{doc_date.year}" / f"{doc_date.month:02d}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / filename
+        out_path.write_bytes(pdf_bytes)
+
+        receipt = Receipt(
+            organization_id=effective_org_id,
+            mailbox_id=None,
+            email_message_id=None,
+            provider_id=provider_id,
+            client_id=sub_client.id if sub_client else None,
+            document_date=doc_date,
+            received_at=rec.remote_mtime or datetime.now(UTC),
+            amount=meta.amount,
+            currency=currency,
+            invoice_number=meta.invoice_number,
+            language=meta.language,
+            filename=filename,
+            file_path=str(out_path),
+            file_size=len(pdf_bytes),
+            file_sha256=sha,
+            source="cloud_folder",
+            classification_layer={
+                "1": ClassificationLayer.layer1,
+                "2": ClassificationLayer.layer2,
+                "3": ClassificationLayer.layer3,
+            }.get(cls.layer, ClassificationLayer.layer3),
+            confidence=cls.confidence,
+            status=ReceiptStatus.processed,  # archive docs go straight to processed
+            review_reason=None,
+            brand=brand_override,
+            document_type=document_type,
+            raw_metadata={
+                "source": "cloud_folder",
+                "inbound_folder_id": fd.id,
+                "inbound_file_id": rec.id,
+                "remote_id": rec.remote_id,
+                "ocr": bool(ocr_data),
+            },
+            processing_log=[{
+                "ts": datetime.utcnow().isoformat(),
+                "event": "ingested_from_inbound",
+                "folder_id": fd.id,
+                "type": fd.type.value if hasattr(fd.type, "value") else str(fd.type),
+                "document_type": document_type,
+                "layer": cls.layer,
+                "confidence": cls.confidence,
+            }],
+        )
+        db.add(receipt)
+        await db.flush()
+
+        rec.status = InboundFileStatus.processed
+        rec.receipt_id = receipt.id
+        rec.processed_at = datetime.now(UTC)
+        await db.commit()
+        logger.info(
+            "process_inbound.done",
+            file_id=rec.id, receipt_id=receipt.id,
+            document_type=document_type, layer=cls.layer,
+        )
+        return {"ok": True, "receipt_id": receipt.id, "document_type": document_type}
+
+
 # --- IMAP sync --------------------------------------------------------------
 
 
