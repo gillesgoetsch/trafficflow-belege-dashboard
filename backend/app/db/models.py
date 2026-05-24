@@ -308,7 +308,11 @@ class Receipt(Base, TimestampMixin):
     # source: email | upload | api | scanner
 
     classification_layer: Mapped[ClassificationLayer] = mapped_column(
-        Enum(ClassificationLayer, name="classification_layer"),
+        Enum(
+            ClassificationLayer,
+            name="classification_layer",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         default=ClassificationLayer.layer1,
         nullable=False,
     )
