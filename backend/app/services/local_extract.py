@@ -582,7 +582,18 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
                 f"{d} {months_de_full[m]} {y}",
             }
             up = pdf_text.upper()
-            if not any(c.upper() in up for c in candidates):
+            # pypdf sometimes emits per-character spacing on rendered text
+            # (e.g. "M ärz" instead of "März"). Collapse internal whitespace
+            # so date candidates still match.
+            up_compact = re.sub(r"\s+", " ", up)
+            up_squeezed = re.sub(r"\s+", "", up)
+            ok = False
+            for c in candidates:
+                cu = c.upper()
+                if cu in up or cu in up_compact or cu.replace(" ", "") in up_squeezed:
+                    ok = True
+                    break
+            if not ok:
                 return False, f"date_not_in_pdf:{r.document_date}"
         except Exception:  # noqa: BLE001
             pass
