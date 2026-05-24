@@ -98,9 +98,9 @@ export default function Connectors() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl font-semibold tracking-tight">Connectoren</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={() => setAdding("local")}>
             <Plus className="h-4 w-4 mr-1" /> Lokal
           </Button>

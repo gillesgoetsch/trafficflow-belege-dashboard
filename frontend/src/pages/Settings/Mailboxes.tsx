@@ -43,20 +43,22 @@ export default function Mailboxes() {
       <Card>
         <div className="divide-y divide-border">
           {(mailboxes ?? []).map((m) => (
-            <div key={m.id} className="p-4 flex items-center gap-3">
+            <div key={m.id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{m.email}</div>
-                <div className="text-xs text-muted-foreground">{m.imap_host}:{m.imap_port} · Ordner {m.folder} · alle {m.batch_interval_minutes} Min.</div>
-                <div className="text-xs mt-0.5">
+                <div className="text-xs text-muted-foreground truncate">{m.imap_host}:{m.imap_port} · Ordner {m.folder} · alle {m.batch_interval_minutes} Min.</div>
+                <div className="text-xs mt-0.5 flex items-center flex-wrap gap-x-2 gap-y-1">
                   {m.enabled ? <Badge variant="success">aktiv</Badge> : <Badge variant="secondary">inaktiv</Badge>}
-                  <span className="text-muted-foreground ml-2">Letzte Sync: {m.last_sync_at ? fmtRelative(m.last_sync_at) : "nie"}</span>
-                  {m.last_error && <span className="text-destructive ml-2">· {m.last_error.slice(0, 80)}</span>}
+                  <span className="text-muted-foreground">Letzte Sync: {m.last_sync_at ? fmtRelative(m.last_sync_at) : "nie"}</span>
+                  {m.last_error && <span className="text-destructive">· {m.last_error.slice(0, 80)}</span>}
                 </div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => test.mutate(m.id)}>Testen</Button>
-              <Button size="sm" variant="outline" onClick={() => sync.mutate(m.id)}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Jetzt synchronisieren</Button>
-              <Button size="icon" variant="ghost" onClick={() => setEditing(m)}><Edit3 className="h-4 w-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => confirm("Postfach wirklich löschen?") && del.mutate(m.id)}><Trash2 className="h-4 w-4" /></Button>
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:ml-auto">
+                <Button size="sm" variant="outline" onClick={() => test.mutate(m.id)}>Testen</Button>
+                <Button size="sm" variant="outline" onClick={() => sync.mutate(m.id)}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Jetzt synchronisieren</Button>
+                <Button size="icon" variant="ghost" onClick={() => setEditing(m)}><Edit3 className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" onClick={() => confirm("Postfach wirklich löschen?") && del.mutate(m.id)}><Trash2 className="h-4 w-4" /></Button>
+              </div>
             </div>
           ))}
           {!mailboxes?.length && <div className="p-6 text-center text-muted-foreground">Noch keine Postfächer.</div>}
