@@ -1,4 +1,5 @@
 import { format, formatDistanceToNowStrict, parseISO } from "date-fns";
+import { de } from "date-fns/locale";
 
 export function fmtDate(input?: string | Date | null): string {
   if (!input) return "—";
@@ -15,7 +16,7 @@ export function fmtDateTime(input?: string | Date | null): string {
 export function fmtRelative(input?: string | Date | null): string {
   if (!input) return "—";
   const d = typeof input === "string" ? parseISO(input) : input;
-  return formatDistanceToNowStrict(d, { addSuffix: true });
+  return formatDistanceToNowStrict(d, { addSuffix: true, locale: de });
 }
 
 export function fmtMoney(amount?: number | string | null, currency?: string | null): string {

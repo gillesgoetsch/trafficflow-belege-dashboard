@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBase } from "../lib/api";
 import { useUi } from "../store/ui";
-import type { PaymentMethod, Provider, Receipt, ReceiptList } from "../types";
+import type { Connector, PaymentMethod, Provider, Receipt, ReceiptList } from "../types";
 import { PAYMENT_METHOD_LABEL } from "../types";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye, Loader2, Cloud, Cpu, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 import { fmtDate, fmtMoney } from "../lib/format";
 import { ReceiptDetailPanel } from "../components/receipts/ReceiptDetailPanel";
+import { SyncRowIcons } from "../components/receipts/SyncBadges";
 import { toast } from "../components/ui/toaster";
 
 const PAGE_SIZE = 50;
@@ -75,6 +76,10 @@ export default function Inbox() {
   }, [datePreset]);
 
   const { data: providers } = useQuery<Provider[]>({ queryKey: ["providers"], queryFn: () => api("/providers") });
+  const { data: connectors } = useQuery<Connector[]>({
+    queryKey: ["connectors", orgId],
+    queryFn: () => api("/connectors", { query: { organization_id: orgId ?? undefined } }),
+  });
 
   const queryParams = {
     organization_id: orgId ?? undefined,
@@ -354,31 +359,34 @@ export default function Inbox() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-8"></TableHead>
-              <TableHead onClick={() => toggleSort("document_date")} className="cursor-pointer select-none" title="Rechnungsdatum (vom Dokument selbst)">
+              <TableHead onClick={() => toggleSort("document_date")} className="cursor-pointer select-none whitespace-nowrap" title="Rechnungsdatum (vom Dokument selbst)">
                 Rechnungsdatum{sortIcon("document_date")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("received_at")} className="cursor-pointer select-none" title="Wann eingegangen / hochgeladen">
+              <TableHead onClick={() => toggleSort("received_at")} className="cursor-pointer select-none whitespace-nowrap" title="Wann eingegangen / hochgeladen">
                 Empfangen{sortIcon("received_at")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("provider_id")} className="cursor-pointer select-none">
+              <TableHead onClick={() => toggleSort("provider_id")} className="cursor-pointer select-none whitespace-nowrap">
                 Anbieter{sortIcon("provider_id")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("brand")} className="cursor-pointer select-none">
+              <TableHead onClick={() => toggleSort("brand")} className="cursor-pointer select-none whitespace-nowrap">
                 Marke{sortIcon("brand")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("filename")} className="cursor-pointer select-none">
+              <TableHead onClick={() => toggleSort("filename")} className="cursor-pointer select-none whitespace-nowrap">
                 Dateiname{sortIcon("filename")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("amount")} className="cursor-pointer select-none text-right">
+              <TableHead onClick={() => toggleSort("amount")} className="cursor-pointer select-none whitespace-nowrap text-right">
                 Betrag{sortIcon("amount")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("payment_method")} className="cursor-pointer select-none">
+              <TableHead onClick={() => toggleSort("payment_method")} className="cursor-pointer select-none whitespace-nowrap">
                 Zahlung{sortIcon("payment_method")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("status")} className="cursor-pointer select-none">
+              <TableHead onClick={() => toggleSort("status")} className="cursor-pointer select-none whitespace-nowrap">
                 Status{sortIcon("status")}
               </TableHead>
-              <TableHead onClick={() => toggleSort("booked_at")} className="cursor-pointer select-none">
+              <TableHead className="select-none w-20 whitespace-nowrap" title="Sync-Status pro Connector — Klick öffnet den Inspector">
+                Sync
+              </TableHead>
+              <TableHead onClick={() => toggleSort("booked_at")} className="cursor-pointer select-none whitespace-nowrap">
                 Verbucht{sortIcon("booked_at")}
               </TableHead>
               <TableHead className="w-24"></TableHead>
@@ -415,6 +423,9 @@ export default function Inbox() {
                 <TableCell className="text-right whitespace-nowrap">{fmtMoney(r.amount, r.currency)}</TableCell>
                 <TableCell><PaymentBadge pm={r.payment_method} /></TableCell>
                 <TableCell><StatusBadge status={r.status} /></TableCell>
+                <TableCell>
+                  <SyncRowIcons targets={r.sync_targets ?? []} connectors={connectors} />
+                </TableCell>
                 <TableCell>{r.booked_at ? <Badge variant="success">verbucht</Badge> : <span className="text-muted-foreground text-xs">offen</span>}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-0.5">
@@ -431,7 +442,7 @@ export default function Inbox() {
               </TableRow>
             ))}
             {!items.length && (
-              <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-12">Keine Belege entsprechen den Filtern</TableCell></TableRow>
+              <TableRow><TableCell colSpan={12} className="text-center text-muted-foreground py-12">Keine Belege entsprechen den Filtern</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
