@@ -368,7 +368,11 @@ def _override_amount_to_brutto(receipt: ClaudeReceipt, pdf_text: str) -> ClaudeR
             return receipt
     except (TypeError, ValueError):
         return receipt
-    text_lower = pdf_text.lower()
+    # Strip date patterns so 'vom 22.01.26' doesn't expose '22.01' as a money
+    # candidate (the model would happily pick it).
+    scrubbed = re.sub(r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b", " ", pdf_text)
+    scrubbed = re.sub(r"\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b", " ", scrubbed)
+    text_lower = scrubbed.lower()
     candidates: list[float] = []
     for kw in _BRUTTO_LABEL_WORDS:
         start = 0
@@ -376,7 +380,7 @@ def _override_amount_to_brutto(receipt: ClaudeReceipt, pdf_text: str) -> ClaudeR
             pos = text_lower.find(kw, start)
             if pos < 0:
                 break
-            window = pdf_text[max(0, pos - 80):min(len(pdf_text), pos + 80 + len(kw))]
+            window = scrubbed[max(0, pos - 80):min(len(scrubbed), pos + 80 + len(kw))]
             for m in _MONEY_NEAR_RE.finditer(window):
                 s = m.group(2)
                 if s.rfind(",") > s.rfind("."):
@@ -535,8 +539,9 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
             months_de_full = ["", "Januar", "Februar", "März", "April", "Mai",
                               "Juni", "Juli", "August", "September", "Oktober",
                               "November", "Dezember"]
+            y2 = y % 100  # 2-digit year ("07.01.26" in German invoices)
             candidates = {
-                # ISO + DD-MM-YYYY family
+                # ISO + DD-MM-YYYY family (4-digit year)
                 f"{y}-{m:02d}-{d:02d}",
                 f"{d:02d}-{m:02d}-{y}",
                 f"{d:02d}.{m:02d}.{y}",
@@ -544,6 +549,11 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
                 f"{m:02d}/{d:02d}/{y}",
                 f"{m}/{d}/{y}",
                 f"{d}/{m}/{y}",
+                # 2-digit year (German invoices like '07.01.26')
+                f"{d:02d}.{m:02d}.{y2:02d}",
+                f"{d}.{m}.{y2:02d}",
+                f"{d:02d}/{m:02d}/{y2:02d}",
+                f"{d:02d}-{m:02d}-{y2:02d}",
                 # Month-abbreviation family with dashes / spaces (US + EU)
                 f"{d:02d}-{months_en[m]}-{y}",
                 f"{d}-{months_en[m]}-{y}",
@@ -592,8 +602,10 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
     # amount (e.g. HEY: PDF shows $99 twice, model returned $198).
     if pdf_text and r.total_amount is not None:
         amount_str = str(r.total_amount)
-        # Strip trailing zeros for matching: "44.59" matches "44.59" or "44,59"
-        # Try both decimal separators
+        # Strip date patterns first so e.g. '22.01' inside '22.01.26' doesn't
+        # look like a money match.
+        scrub = re.sub(r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b", " ", pdf_text)
+        scrub = re.sub(r"\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b", " ", scrub)
         candidates = {
             amount_str,
             amount_str.replace(".", ","),
@@ -601,7 +613,7 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
             f"{float(r.total_amount):,.2f}".replace(",", "'"),  # CHF-style 1'234.56
             f"{float(r.total_amount):,.2f}",                     # US-style 1,234.56
         }
-        if not any(c in pdf_text for c in candidates):
+        if not any(c in scrub for c in candidates):
             return False, f"amount_not_in_pdf:{amount_str}"
 
     # Multi-amount disambiguation guard — but skip it when the extracted
