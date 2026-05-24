@@ -452,6 +452,11 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
             months_full = ["", "January", "February", "March", "April", "May",
                            "June", "July", "August", "September", "October",
                            "November", "December"]
+            months_de_short = ["", "Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
+                               "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+            months_de_full = ["", "Januar", "Februar", "März", "April", "Mai",
+                              "Juni", "Juli", "August", "September", "Oktober",
+                              "November", "Dezember"]
             candidates = {
                 # ISO + DD-MM-YYYY family
                 f"{y}-{m:02d}-{d:02d}",
@@ -470,12 +475,19 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
                 f"{months_en[m]} {d} {y}",
                 f"{d:02d} {months_en[m]} {y}",
                 f"{d} {months_en[m]} {y}",
-                # Full month name
+                # Full month name (English)
                 f"{months_full[m]} {d}, {y}",
                 f"{months_full[m]} {d:02d}, {y}",
-                f"{months_full[m]} {d}, {y}",
                 f"{d} {months_full[m]} {y}",
                 f"{d:02d} {months_full[m]} {y}",
+                # German short month (Jan/Feb/Mär/Apr/Mai/...)
+                f"{d}. {months_de_short[m]} {y}",
+                f"{d:02d}. {months_de_short[m]} {y}",
+                f"{d} {months_de_short[m]} {y}",
+                # German full month name (15. März 2026, "15. Januar 2026")
+                f"{d}. {months_de_full[m]} {y}",
+                f"{d:02d}. {months_de_full[m]} {y}",
+                f"{d} {months_de_full[m]} {y}",
             }
             up = pdf_text.upper()
             if not any(c.upper() in up for c in candidates):
