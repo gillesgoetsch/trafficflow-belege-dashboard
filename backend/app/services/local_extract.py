@@ -433,6 +433,41 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
     except Exception:  # noqa: BLE001
         return False, "date_unparseable"
 
+    # Date-consistency guard — the extracted document_date must be supported
+    # by something in the PDF text. We check several spellings: ISO, slashed,
+    # German DD.MM.YYYY, and English month-name forms. Catches the failure
+    # where the model produces a plausible-looking date that simply isn't
+    # on the document (e.g. Adobe '06-APR-2026' → model returned 2026-06-06).
+    if pdf_text and r.document_date:
+        try:
+            from datetime import datetime as _dt
+            dd = _dt.fromisoformat(r.document_date).date()
+            y, m, d = dd.year, dd.month, dd.day
+            months_en = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                         "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+            months_full = ["", "January", "February", "March", "April", "May",
+                           "June", "July", "August", "September", "October",
+                           "November", "December"]
+            candidates = {
+                f"{y}-{m:02d}-{d:02d}",
+                f"{d:02d}-{m:02d}-{y}",
+                f"{d:02d}.{m:02d}.{y}",
+                f"{d:02d}/{m:02d}/{y}",
+                f"{m:02d}/{d:02d}/{y}",
+                f"{d:02d}-{months_en[m]}-{y}",
+                f"{d}-{months_en[m]}-{y}",
+                f"{months_full[m]} {d}, {y}",
+                f"{months_full[m]} {d:02d}, {y}",
+                # Also accept loose 'M D, YYYY' variants
+                f"{m}/{d}/{y}",
+                f"{d}/{m}/{y}",
+            }
+            up = pdf_text.upper()
+            if not any(c.upper() in up for c in candidates):
+                return False, f"date_not_in_pdf:{r.document_date}"
+        except Exception:  # noqa: BLE001
+            pass
+
     # Currency-consistency guard — the extracted currency must appear in the
     # PDF text (as code or common symbol). Catches the model defaulting to
     # CHF for a Swiss customer even when the invoice itself is in EUR/USD.
