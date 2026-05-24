@@ -149,8 +149,18 @@ NEVER return field labels like "SEQUENTIAL INVOICE NUMBER" or
 
 AMOUNT + CURRENCY RULES:
 
-- total_amount = GROSS / Brutto / total-including-VAT.
+- total_amount = GROSS / Brutto / total-including-VAT — the FINAL amount
+  the customer is billed.
 - If both Netto and Brutto are shown, return Brutto.
+- German→English mapping:
+  * "Gesamtsumme", "Gesamt (Brutto)", "Rechnungsbetrag", "Betrag inkl. MwSt.",
+    "Bruttogesamtbetrag", "Endbetrag", "Zahlbetrag" → THIS IS THE TOTAL
+  * "Zwischensumme", "Gesamt (Netto)", "Total excluding tax",
+    "Subtotal" (when below it is a tax line + final total) → NOT THE TOTAL
+- Invoice with both USD and CHF columns (Google Workspace, Stripe with
+  conversion): pick the original-billed currency, which is the one listed
+  FIRST and the one in the "Gesamtsumme" header at the top of the page.
+  Don't pick the converted reference value.
 - Ignore numbers in product names: "Porsche 911", "iPhone 13".
 - Convert "119,10" to "119.10". No currency symbol in the amount string.
 - currency MUST be the symbol/code printed DIRECTLY next to the total
@@ -332,13 +342,81 @@ def _unavailable(reason: str) -> ClaudeReceipt:
     )
 
 
+_BRUTTO_LABEL_WORDS = (
+    "gesamtsumme", "rechnungsbetrag", "betrag inkl",
+    "bruttogesamtbetrag", "endbetrag", "zahlbetrag", "grand total",
+    "total (brutto)", "amount due", "amount paid", "total due",
+)
+_MONEY_NEAR_RE = re.compile(
+    r"(?<![\w])([\$€£¥]\s*)?(\d{1,3}(?:[.,'\s]\d{3})*[.,]\d{2})(?!\d)",
+)
+
+
+def _override_amount_to_brutto(receipt: ClaudeReceipt, pdf_text: str) -> ClaudeReceipt:
+    """If the PDF has an explicit Brutto/Total label with a value LARGER than
+    what the LLM picked (within VAT-plausible 1.01–1.30×), use the labeled
+    value. Catches the Netto→Brutto bug Qwen-3B has with German invoices.
+
+    Searches a window of ±80 chars around each label keyword because pypdf
+    often flattens layout so values can appear either before or after labels.
+    """
+    if not pdf_text or receipt.total_amount is None:
+        return receipt
+    try:
+        llm_amt = float(receipt.total_amount)
+        if llm_amt <= 0:
+            return receipt
+    except (TypeError, ValueError):
+        return receipt
+    text_lower = pdf_text.lower()
+    candidates: list[float] = []
+    for kw in _BRUTTO_LABEL_WORDS:
+        start = 0
+        while True:
+            pos = text_lower.find(kw, start)
+            if pos < 0:
+                break
+            window = pdf_text[max(0, pos - 80):min(len(pdf_text), pos + 80 + len(kw))]
+            for m in _MONEY_NEAR_RE.finditer(window):
+                s = m.group(2)
+                if s.rfind(",") > s.rfind("."):
+                    n = s.replace(".", "").replace("'", "").replace(" ", "").replace(",", ".")
+                else:
+                    n = s.replace(",", "").replace("'", "").replace(" ", "")
+                try:
+                    candidates.append(float(n))
+                except ValueError:
+                    continue
+            start = pos + len(kw)
+    if not candidates:
+        return receipt
+    # The most-likely Brutto is the largest one that is within 1.01–1.30 of
+    # the LLM amount (i.e. the LLM picked Netto and this is Netto + VAT).
+    best = None
+    for c in sorted(candidates, reverse=True):
+        ratio = c / llm_amt
+        if 1.01 <= ratio <= 1.30:
+            best = c
+            break
+    if best is not None:
+        logger.info("local_extract.brutto_override",
+                    old=str(receipt.total_amount), new=str(best),
+                    ratio=round(best / llm_amt, 3))
+        receipt.total_amount = Decimal(f"{best:.2f}")
+    return receipt
+
+
 async def extract_from_pdf(pdf_path: Path) -> ClaudeReceipt:
     text = _read_pdf_text(pdf_path)
     if not text or len(text.strip()) < 20:
         # Image-only PDF — local text model can't help.
         logger.info("local_extract.image_only_pdf", path=str(pdf_path))
         return _unavailable("image_only_pdf")
-    return await _extract_from_text(text, source=str(pdf_path))
+    result = await _extract_from_text(text, source=str(pdf_path))
+    # Post-process: if LLM picked Netto, try to recover Brutto from labels.
+    if result.document_type != "__unavailable__":
+        result = _override_amount_to_brutto(result, text)
+    return result
 
 
 async def extract_from_image(image_path: Path) -> ClaudeReceipt:
