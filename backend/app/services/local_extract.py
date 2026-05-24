@@ -416,8 +416,12 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
         return False, "missing_amount"
     try:
         amt = float(r.total_amount)
-        if amt <= 0 or amt > 1e8:
+        if amt < 0 or amt > 1e8:
             return False, f"implausible_amount:{amt}"
+        # amt == 0 is legitimate (free trials, 100%-discount credits etc.).
+        # Skip the rest of the financial checks for zero-amount invoices.
+        if amt == 0:
+            return True, "ok_zero_amount"
     except Exception:  # noqa: BLE001
         return False, "amount_not_numeric"
 
