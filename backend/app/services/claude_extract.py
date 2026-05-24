@@ -127,6 +127,12 @@ CRITICAL date rules:
 5. For bank-transfer scans where you can read a date stamp from the bank or
    merchant on the document, use that. If only the filename has a date and
    the image itself has none, return null.
+6. **IGNORE print/export/browser timestamps.** Web-rendered invoices
+   (Notion, Stripe, Slack, etc.) often have a header like
+   "21/05/2026, 15:11 Notion Invoice June 15, 2026" at the top of every
+   page — that's the browser print timestamp, NOT the invoice's own
+   date. Always prefer the value next to the labeled INVOICE DATE /
+   Rechnungsdatum field over any timestamp in the page header.
 
 ------------------------------------------------------------------
 INVOICE NUMBER RULES
@@ -138,6 +144,12 @@ number", "Belegnummer". It is NOT an article number, NOT a product code,
 NOT a customer number, NOT a tax ID, NOT a VAT number. If multiple
 candidates exist, prefer the one in the document title/heading. If no
 clearly-labelled identifier exists, return null.
+
+Return the VALUE, never the field label. If the value is literally
+"Upcoming", "Pending", "TBD", "N/A", "-", or any placeholder text
+(common on draft/upcoming invoices), return null instead.
+NEVER return field labels like "SEQUENTIAL INVOICE NUMBER" or
+"INVOICE NUMBER" — those are headings, not values.
 
 ------------------------------------------------------------------
 AMOUNT RULES

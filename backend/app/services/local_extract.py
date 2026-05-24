@@ -123,6 +123,13 @@ CRITICAL:
 3. For Twint / PostFinance / e-payment screenshots: look for "Datum",
    "ausgeführt am", or a stamped date. If you can't read it confidently,
    return null — DO NOT use today's date.
+4. **IGNORE print/export/browser timestamps.** Web-rendered invoices (Notion,
+   Stripe, Slack, etc.) often have a header like "21/05/2026, 15:11
+   Notion Invoice June 15, 2026" at the top of every page — that's the
+   browser print timestamp, NOT the invoice's own date. The real
+   document_date is the value next to "INVOICE DATE", "Rechnungsdatum",
+   "Date", "Issue Date", "Erstellt am" labels. Always prefer the labeled
+   field over any timestamp in the page header/footer.
 
 INVOICE NUMBER RULES:
 
@@ -133,6 +140,12 @@ number", "Belegnummer". It is NOT an article number, NOT a product code,
 NOT a customer number, NOT a tax ID. If multiple candidates exist,
 prefer the one in the document title/heading. If no clearly-labelled
 identifier exists, return null.
+
+Return the VALUE, never the field label. If the value is literally
+"Upcoming", "Pending", "TBD", "N/A", "-", or any placeholder text
+(common on draft/upcoming invoices), return null instead.
+NEVER return field labels like "SEQUENTIAL INVOICE NUMBER" or
+"INVOICE NUMBER" — those are headings, not values.
 
 AMOUNT + CURRENCY RULES:
 
