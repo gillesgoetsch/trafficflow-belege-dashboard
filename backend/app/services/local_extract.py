@@ -377,6 +377,23 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
     except Exception:  # noqa: BLE001
         return False, "date_unparseable"
 
+    # Hallucination guard — the extracted amount MUST appear verbatim in the
+    # PDF text. This catches the failure mode where the model invents an
+    # amount (e.g. HEY: PDF shows $99 twice, model returned $198).
+    if pdf_text and r.total_amount is not None:
+        amount_str = str(r.total_amount)
+        # Strip trailing zeros for matching: "44.59" matches "44.59" or "44,59"
+        # Try both decimal separators
+        candidates = {
+            amount_str,
+            amount_str.replace(".", ","),
+            # Pretty-formatted with thousands sep
+            f"{float(r.total_amount):,.2f}".replace(",", "'"),  # CHF-style 1'234.56
+            f"{float(r.total_amount):,.2f}",                     # US-style 1,234.56
+        }
+        if not any(c in pdf_text for c in candidates):
+            return False, f"amount_not_in_pdf:{amount_str}"
+
     # Multi-amount disambiguation guard
     if pdf_text:
         amounts = re.findall(r"(?<!\d)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))(?!\d)", pdf_text)
@@ -387,7 +404,6 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
                 nums.append(float(normalized))
             except ValueError:
                 continue
-        # keep plausible-looking values only
         nums = [n for n in nums if 1 <= n < 1e7]
         if len(set(nums)) >= 3:
             top_two = sorted(set(nums), reverse=True)[:2]
