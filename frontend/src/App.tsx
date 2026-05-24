@@ -16,6 +16,7 @@ import SettingsMailboxes from "./pages/Settings/Mailboxes";
 import SettingsProviders from "./pages/Settings/Providers";
 import SettingsClients from "./pages/Settings/Clients";
 import SettingsConnectors from "./pages/Settings/Connectors";
+import SettingsSyncInspector from "./pages/Settings/SyncInspector";
 import SettingsAccount from "./pages/Settings/Account";
 import SettingsUsers from "./pages/Settings/Users";
 import SettingsRouting from "./pages/Settings/Routing";
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="settings/providers" element={<SettingsProviders />} />
           <Route path="settings/clients" element={<SettingsClients />} />
           <Route path="settings/connectors" element={<SettingsConnectors />} />
+          <Route path="settings/sync-inspector" element={<SettingsSyncInspector />} />
           <Route path="settings/routing" element={<SettingsRouting />} />
           <Route path="settings/users" element={<SettingsUsers />} />
           <Route path="settings/account" element={<SettingsAccount />} />

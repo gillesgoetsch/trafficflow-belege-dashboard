@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBase } from "../../lib/api";
-import type { DocumentType, Organization, PaymentMethod, Provider, ReceiptDetail, Client } from "../../types";
+import type { Connector, DocumentType, Organization, PaymentMethod, Provider, ReceiptDetail, Client } from "../../types";
 import { DOCUMENT_TYPE_LABEL, PAYMENT_METHOD_LABEL } from "../../types";
+import { SyncDetailRow } from "./SyncBadges";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../ui/dialog";
 import { fmtDate, fmtDateTime, fmtMoney } from "../../lib/format";
 import { Button } from "../ui/button";
@@ -30,6 +31,11 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
   const { data: clients } = useQuery<Client[]>({
     queryKey: ["clients", data?.organization_id],
     queryFn: () => api("/clients", { query: { organization_id: data?.organization_id } }),
+    enabled: !!data,
+  });
+  const { data: connectors } = useQuery<Connector[]>({
+    queryKey: ["connectors", data?.organization_id],
+    queryFn: () => api("/connectors", { query: { organization_id: data?.organization_id } }),
     enabled: !!data,
   });
 
@@ -272,14 +278,13 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
 
               <section>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Sync-Ziele</div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {(data.sync_targets ?? []).map((t) => (
-                    <div key={t.id} className="flex items-center justify-between text-sm">
-                      <div>Connector #{t.connector_id}</div>
-                      <Badge variant={t.status === "synced" ? "success" : t.status === "failed" ? "destructive" : "secondary"}>
-                        {t.status}
-                      </Badge>
-                    </div>
+                    <SyncDetailRow
+                      key={t.id}
+                      target={t}
+                      connector={connectors?.find((c) => c.id === t.connector_id)}
+                    />
                   ))}
                   {!(data.sync_targets ?? []).length && <p className="text-sm text-muted-foreground">Keine Sync-Ziele konfiguriert.</p>}
                 </div>

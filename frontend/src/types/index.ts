@@ -11,7 +11,22 @@ export type MatchType =
   | "plus_alias"
   | "sender_contains";
 
-export type SyncStatus = "pending" | "synced" | "failed" | "skipped";
+export type SyncStatus = "pending" | "synced" | "failed" | "skipped" | "dry_run_ok";
+export type ConnectorMode = "off" | "dry_run" | "live";
+
+export const CONNECTOR_MODE_LABEL: Record<ConnectorMode, string> = {
+  off: "Aus",
+  dry_run: "Dry-Run",
+  live: "Live",
+};
+
+export const SYNC_STATUS_LABEL: Record<SyncStatus, string> = {
+  pending: "Wartet",
+  synced: "Synchronisiert",
+  failed: "Fehlgeschlagen",
+  skipped: "Übersprungen",
+  dry_run_ok: "Dry-Run OK",
+};
 
 export type PaymentMethod =
   | "credit_card"
@@ -109,11 +124,53 @@ export interface ClientMapping {
 
 export interface SyncTarget {
   id: number;
+  receipt_id: number;
   connector_id: number;
   status: SyncStatus;
+  mode: ConnectorMode | null;
   synced_at: string | null;
   external_id: string | null;
   error: string | null;
+  response_status_code: number | null;
+  retry_count: number;
+  next_retry_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SyncTargetRow extends SyncTarget {
+  connector_name: string | null;
+  connector_type: ConnectorType | null;
+  organization_id: number | null;
+  receipt: {
+    id: number | null;
+    filename: string | null;
+    amount: string | null;
+    currency: string | null;
+    invoice_number: string | null;
+    document_date: string | null;
+    provider: string | null;
+  } | null;
+}
+
+export interface SyncTargetDetail extends SyncTargetRow {
+  request_payload: Record<string, any> | null;
+  response_payload: Record<string, any> | null;
+}
+
+export interface SyncTargetList {
+  items: SyncTargetRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ProviderAccountMapping {
+  id: number;
+  provider_id: number;
+  organization_id: number;
+  account_code: string;
+  vat_code: string | null;
 }
 
 export interface Receipt {
@@ -144,12 +201,12 @@ export interface Receipt {
   bookkeeping_ref: string | null;
   review_reason: string | null;
   created_at: string;
+  sync_targets: SyncTarget[];
 }
 
 export interface ReceiptDetail extends Receipt {
   raw_metadata: Record<string, any>;
   processing_log: Array<Record<string, any>>;
-  sync_targets: SyncTarget[];
 }
 
 export interface ReceiptList {
@@ -165,10 +222,40 @@ export interface Connector {
   type: ConnectorType;
   name: string;
   enabled: boolean;
+  mode: ConnectorMode;
+  auto_book: boolean;
 }
 
 export interface ConnectorDetail extends Connector {
   config: Record<string, any>;
+}
+
+export interface ConnectorPreviewResult {
+  connector: {
+    id: number;
+    type: ConnectorType;
+    name: string;
+    mode: ConnectorMode;
+    auto_book: boolean;
+  };
+  receipt: {
+    id: number;
+    filename: string;
+    provider: string | null;
+    amount: string | null;
+    currency: string | null;
+    document_date: string | null;
+    invoice_number: string | null;
+    account_code: string | null;
+    vat_code: string | null;
+  };
+  result: {
+    ok: boolean;
+    error: string | null;
+    request_payload: Record<string, any> | null;
+    response_payload: Record<string, any> | null;
+    response_status_code: number | null;
+  };
 }
 
 export interface ReviewItem {

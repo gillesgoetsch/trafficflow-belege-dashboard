@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.db.models import ConnectorMode
 from app.services.connectors.base import Connector, ReceiptToUpload, SyncResult
 
 
@@ -61,24 +62,56 @@ class OneDriveConnector(Connector):
             self.config["refresh_token"] = j["refresh_token"]
         return token
 
-    async def upload(self, receipt: ReceiptToUpload) -> SyncResult:
-        token = await self._access_token()
+    def _resolve_target_path(self, receipt: ReceiptToUpload) -> str:
         folder = (self.config.get("folder_path") or "/Belege").lstrip("/")
         d = receipt.document_date
-        sub_parts = [folder, str(receipt.organization_id)]
+        parts = [folder, str(receipt.organization_id)]
         if d:
-            sub_parts.extend([str(d.year), f"{d.month:02d}"])
-        path = "/".join(sub_parts + [receipt.filename])
+            parts.extend([str(d.year), f"{d.month:02d}"])
+        return "/".join(parts + [receipt.filename])
+
+    async def upload(
+        self,
+        receipt: ReceiptToUpload,
+        *,
+        mode: ConnectorMode = ConnectorMode.live,
+        auto_book: bool = False,
+    ) -> SyncResult:
+        if mode == ConnectorMode.off:
+            return SyncResult(ok=False, error="connector mode=off", mode=mode)
+
+        path = self._resolve_target_path(receipt)
         url = f"{GRAPH}/me/drive/root:/{path}:/content"
+        payload = {"action": "PUT", "url": url, "filename": receipt.filename}
+
+        if mode == ConnectorMode.dry_run:
+            return SyncResult(
+                ok=True, mode=mode, request_payload=payload,
+            )
+
+        token = await self._access_token()
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/pdf"}
         with open(receipt.file_path, "rb") as f:
             data = f.read()
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.put(url, content=data, headers=headers)
             if resp.status_code >= 400:
-                return SyncResult(ok=False, error=f"OneDrive {resp.status_code}: {resp.text[:200]}")
+                return SyncResult(
+                    ok=False,
+                    error=f"OneDrive {resp.status_code}: {resp.text[:200]}",
+                    mode=ConnectorMode.live,
+                    request_payload=payload,
+                    response_status_code=resp.status_code,
+                    response_payload={"text": resp.text[:1000]},
+                )
             j = resp.json()
-            return SyncResult(ok=True, external_id=j.get("id"))
+            return SyncResult(
+                ok=True, external_id=j.get("id"),
+                mode=ConnectorMode.live,
+                request_payload=payload,
+                response_payload=j,
+                response_status_code=resp.status_code,
+            )
 
     async def test(self) -> bool:
         try:

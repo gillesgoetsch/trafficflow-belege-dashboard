@@ -55,11 +55,18 @@ class ConnectorType(str, enum.Enum):
     bexio = "bexio"
 
 
+class ConnectorMode(str, enum.Enum):
+    off = "off"
+    dry_run = "dry_run"
+    live = "live"
+
+
 class SyncStatus(str, enum.Enum):
     pending = "pending"
     synced = "synced"
     failed = "failed"
     skipped = "skipped"
+    dry_run_ok = "dry_run_ok"
 
 
 class MatchType(str, enum.Enum):
@@ -364,6 +371,19 @@ class Connector(Base, TimestampMixin):
     type: Mapped[ConnectorType] = mapped_column(Enum(ConnectorType, name="connector_type"), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # mode supersedes `enabled` for richer control. `enabled` is kept for backwards-compat
+    # with the connector list UI; sync logic checks mode first (off → skip, dry_run → log only).
+    mode: Mapped[ConnectorMode] = mapped_column(
+        Enum(ConnectorMode, name="connector_mode"),
+        default=ConnectorMode.live,
+        server_default="live",
+        nullable=False,
+    )
+    # When mode==live and auto_book is True, Bexio bills are immediately booked
+    # instead of left as drafts. Default False — safer.
+    auto_book: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     config_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted JSON
 
     organization: Mapped[Organization] = relationship(back_populates="connectors")
@@ -378,17 +398,53 @@ class SyncTarget(Base, TimestampMixin):
     status: Mapped[SyncStatus] = mapped_column(
         Enum(SyncStatus, name="sync_status"), default=SyncStatus.pending, nullable=False
     )
+    # Snapshot of connector.mode at the time this attempt ran — needed because
+    # the connector mode can change later and we want the audit trail to stay true.
+    mode: Mapped[ConnectorMode | None] = mapped_column(
+        Enum(ConnectorMode, name="connector_mode", create_type=False)
+    )
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     external_id: Mapped[str | None] = mapped_column(String(255))
     error: Mapped[str | None] = mapped_column(Text)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    request_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    response_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    response_status_code: Mapped[int | None] = mapped_column(Integer)
 
     receipt: Mapped[Receipt] = relationship(back_populates="sync_targets")
     connector: Mapped[Connector] = relationship()
 
     __table_args__ = (
         UniqueConstraint("receipt_id", "connector_id", name="uq_sync_target"),
+    )
+
+
+class ProviderAccountMapping(Base, TimestampMixin):
+    """Bookkeeping mapping per (organization × provider).
+
+    `account_code` is the Bexio chart-of-accounts entry to charge (e.g. "6510").
+    `vat_code` optionally overrides VAT code lookup (e.g. "VST077"). Used by the
+    Bexio connector to build kb_bill positions with correct accounting fields.
+    """
+    __tablename__ = "provider_account_mappings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider_id: Mapped[int] = mapped_column(
+        ForeignKey("providers.id", ondelete="CASCADE"), index=True
+    )
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    account_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    vat_code: Mapped[str | None] = mapped_column(String(32))
+
+    provider: Mapped[Provider] = relationship()
+    organization: Mapped[Organization] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "provider_id", "organization_id", name="uq_provider_account_mapping"
+        ),
     )
 
 

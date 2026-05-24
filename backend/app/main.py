@@ -22,6 +22,7 @@ from app.api import (
     providers,
     receipts,
     review,
+    sync_targets,
     upload,
     users as users_api,
 )
@@ -77,6 +78,7 @@ app.include_router(clients.router, prefix=f"{api_prefix}/clients", tags=["client
 app.include_router(receipts.router, prefix=f"{api_prefix}/receipts", tags=["receipts"])
 app.include_router(review.router, prefix=f"{api_prefix}/review", tags=["review"])
 app.include_router(connectors.router, prefix=f"{api_prefix}/connectors", tags=["connectors"])
+app.include_router(sync_targets.router, prefix=f"{api_prefix}/sync-targets", tags=["sync-targets"])
 app.include_router(upload.router, prefix=f"{api_prefix}/upload", tags=["upload"])
 app.include_router(dashboard.router, prefix=f"{api_prefix}/dashboard", tags=["dashboard"])
 app.include_router(users_api.router, prefix=f"{api_prefix}/users", tags=["users"])

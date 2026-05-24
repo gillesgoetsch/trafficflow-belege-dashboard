@@ -1,8 +1,9 @@
-"""Connector CRUD + OneDrive OAuth callback + connection test."""
+"""Connector CRUD + OneDrive OAuth callback + connection test + Bexio preview."""
 from __future__ import annotations
 
 import secrets
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -13,10 +14,21 @@ from sqlalchemy.future import select
 from app.config import settings
 from app.core.encryption import decrypt_json, encrypt_json
 from app.core.security import get_current_user
-from app.db.models import Connector, ConnectorType, User
+from app.db.models import (
+    Client,
+    Connector,
+    ConnectorMode,
+    ConnectorType,
+    Provider,
+    ProviderAccountMapping,
+    Receipt,
+    User,
+)
 from app.db.session import get_db
 from app.schemas import ConnectorDetail, ConnectorIn, ConnectorOut
 from app.services.connectors import REGISTRY, get_connector_class
+from app.services.connectors.base import ReceiptToUpload
+from app.services.connectors.bexio import BexioConnector
 
 router = APIRouter()
 
@@ -32,7 +44,9 @@ def _detail(c: Connector) -> ConnectorDetail:
             safe[k] = v
     return ConnectorDetail.model_validate({
         "id": c.id, "organization_id": c.organization_id, "type": c.type,
-        "name": c.name, "enabled": c.enabled, "config": safe,
+        "name": c.name, "enabled": c.enabled,
+        "mode": c.mode, "auto_book": c.auto_book,
+        "config": safe,
     })
 
 
@@ -67,6 +81,8 @@ async def create_connector(
         type=body.type,
         name=body.name,
         enabled=body.enabled,
+        mode=body.mode or ConnectorMode.live,
+        auto_book=bool(body.auto_book),
         config_enc=encrypt_json(body.config or {}),
     )
     db.add(c)
@@ -87,6 +103,10 @@ async def update_connector(
         raise HTTPException(404, "Not found")
     c.name = body.name
     c.enabled = body.enabled
+    if body.mode is not None:
+        c.mode = body.mode
+    if body.auto_book is not None:
+        c.auto_book = body.auto_book
     if body.config:
         existing = decrypt_json(c.config_enc) if c.config_enc else {}
         merged = {**(existing or {}), **{k: v for k, v in body.config.items() if v not in (None, "*****", "")}}
@@ -125,6 +145,104 @@ async def test_connector(
         return {"ok": bool(ok)}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
+
+
+@router.post("/{connector_id}/preview")
+async def preview_connector(
+    connector_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+    receipt_id: int | None = Query(default=None),
+):
+    """Run a dry-run for one receipt (most recent if not specified) and return
+    the payload that would be sent. No DB writes."""
+    c = await db.get(Connector, connector_id)
+    if not c:
+        raise HTTPException(404, "Connector not found")
+
+    # Pick a receipt — explicit id, or most recent for this org
+    if receipt_id is not None:
+        receipt = await db.get(Receipt, receipt_id)
+        if not receipt or receipt.organization_id != c.organization_id:
+            raise HTTPException(404, "Receipt not found in this organization")
+    else:
+        receipt = (await db.scalars(
+            select(Receipt).where(Receipt.organization_id == c.organization_id)
+            .order_by(Receipt.created_at.desc())
+            .limit(1)
+        )).first()
+        if not receipt:
+            raise HTTPException(400, "No receipts available in this organization to preview")
+
+    # Hydrate provider + client + mapping
+    prov = await db.get(Provider, receipt.provider_id) if receipt.provider_id else None
+    client = await db.get(Client, receipt.client_id) if receipt.client_id else None
+    account_code: str | None = None
+    vat_code: str | None = None
+    if receipt.provider_id:
+        mapping = (await db.scalars(select(ProviderAccountMapping).where(
+            ProviderAccountMapping.provider_id == receipt.provider_id,
+            ProviderAccountMapping.organization_id == receipt.organization_id,
+        ))).first()
+        if mapping:
+            account_code = mapping.account_code
+            vat_code = mapping.vat_code
+
+    upload = ReceiptToUpload(
+        receipt_id=receipt.id,
+        organization_id=receipt.organization_id,
+        file_path=Path(receipt.file_path),
+        filename=receipt.filename,
+        document_date=receipt.document_date or receipt.received_at,
+        due_date=receipt.due_date,
+        provider=(prov.display_name if prov else None),
+        client=(client.name if client else None),
+        amount=receipt.amount,
+        currency=receipt.currency,
+        invoice_number=receipt.invoice_number,
+        vat_rate=float(receipt.vat_rate) if receipt.vat_rate is not None else None,
+        vat_amount=float(receipt.vat_amount) if receipt.vat_amount is not None else None,
+        account_code=account_code,
+        vat_code=vat_code,
+        notes=receipt.notes,
+    )
+
+    cls = get_connector_class(c.type.value)
+    cfg = decrypt_json(c.config_enc) or {}
+    try:
+        result = await cls(cfg).upload(
+            upload, mode=ConnectorMode.dry_run, auto_book=c.auto_book,
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"Preview failed: {e}") from e
+
+    return {
+        "connector": {
+            "id": c.id,
+            "type": c.type.value,
+            "name": c.name,
+            "mode": c.mode.value,
+            "auto_book": c.auto_book,
+        },
+        "receipt": {
+            "id": receipt.id,
+            "filename": receipt.filename,
+            "provider": prov.display_name if prov else None,
+            "amount": str(receipt.amount) if receipt.amount is not None else None,
+            "currency": receipt.currency,
+            "document_date": receipt.document_date.isoformat() if receipt.document_date else None,
+            "invoice_number": receipt.invoice_number,
+            "account_code": account_code,
+            "vat_code": vat_code,
+        },
+        "result": {
+            "ok": result.ok,
+            "error": result.error,
+            "request_payload": result.request_payload,
+            "response_payload": result.response_payload,
+            "response_status_code": result.response_status_code,
+        },
+    }
 
 
 # --- OneDrive OAuth flow ----------------------------------------------------

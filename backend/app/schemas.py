@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.db.models import (
     ClassificationLayer,
+    ConnectorMode,
     ConnectorType,
     EmailMessageStatus,
     MatchType,
@@ -228,6 +229,7 @@ class ReceiptOut(_ORM):
     bookkeeping_ref: str | None = None
     review_reason: str | None
     created_at: datetime
+    sync_targets: list[SyncTargetOut] = []
 
 
 class ReceiptDetail(ReceiptOut):
@@ -268,11 +270,23 @@ class ReceiptListOut(BaseModel):
 
 class SyncTargetOut(_ORM):
     id: int
+    receipt_id: int
     connector_id: int
     status: SyncStatus
+    mode: ConnectorMode | None = None
     synced_at: datetime | None
     external_id: str | None
     error: str | None
+    response_status_code: int | None = None
+    retry_count: int = 0
+    next_retry_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SyncTargetDetail(SyncTargetOut):
+    request_payload: dict[str, Any] | None = None
+    response_payload: dict[str, Any] | None = None
 
 
 class ConnectorIn(BaseModel):
@@ -280,6 +294,8 @@ class ConnectorIn(BaseModel):
     type: ConnectorType
     name: str
     enabled: bool = True
+    mode: ConnectorMode | None = None
+    auto_book: bool | None = None
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -289,10 +305,30 @@ class ConnectorOut(_ORM):
     type: ConnectorType
     name: str
     enabled: bool
+    mode: ConnectorMode
+    auto_book: bool
 
 
 class ConnectorDetail(ConnectorOut):
     config: dict[str, Any]
+
+
+# --- Provider account mappings (Bexio auto-fill) ---
+
+
+class ProviderAccountMappingIn(BaseModel):
+    provider_id: int
+    organization_id: int
+    account_code: str
+    vat_code: str | None = None
+
+
+class ProviderAccountMappingOut(_ORM):
+    id: int
+    provider_id: int
+    organization_id: int
+    account_code: str
+    vat_code: str | None
 
 
 # --- Review queue ---
@@ -361,4 +397,5 @@ class DashboardCharts(BaseModel):
 
 # Recursive references
 LoginOut.model_rebuild()
+ReceiptOut.model_rebuild()
 ReceiptDetail.model_rebuild()

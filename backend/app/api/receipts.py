@@ -134,6 +134,7 @@ async def list_receipts(
 
     q = (
         select(Receipt)
+        .options(selectinload(Receipt.sync_targets))
         .where(cond)
         .order_by(sort_expr, Receipt.id.desc())
         .offset(page.offset)

@@ -13,6 +13,7 @@ import {
   UserCircle,
   Receipt,
   Route as RouteIcon,
+  Activity,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 
@@ -30,6 +31,7 @@ const SETTINGS = [
   { to: "/settings/routing", icon: RouteIcon, label: "Firmen-Routing" },
   { to: "/settings/clients", icon: Users, label: "Mandanten" },
   { to: "/settings/connectors", icon: Plug, label: "Connectoren" },
+  { to: "/settings/sync-inspector", icon: Activity, label: "Sync-Inspector" },
   { to: "/settings/users", icon: UsersRound, label: "Benutzer" },
   { to: "/settings/account", icon: UserCircle, label: "Konto" },
 ];

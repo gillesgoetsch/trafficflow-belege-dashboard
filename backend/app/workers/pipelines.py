@@ -21,11 +21,13 @@ from app.core.logging import get_logger
 from app.db.models import (
     ClassificationLayer,
     Connector,
+    ConnectorMode,
     EmailMessage,
     EmailMessageStatus,
     Mailbox,
     Organization,
     Provider,
+    ProviderAccountMapping,
     Receipt,
     ReceiptStatus,
     SyncStatus,
@@ -39,7 +41,7 @@ from app.services.classifier import (
     resolve_provider_from_slug,
 )
 from app.services.connectors import get_connector_class
-from app.services.connectors.base import ReceiptToUpload
+from app.services.connectors.base import ReceiptToUpload, SyncResult
 from app.services.filename import build_filename
 from app.services.imap_fetcher import (
     extract_html_text,
@@ -649,34 +651,83 @@ def _image_media(path: Path) -> str:
 # --- Connector syncs --------------------------------------------------------
 
 
-async def sync_receipt_to_connector(ctx, receipt_id: int, connector_id: int):
+async def sync_receipt_to_connector(
+    ctx,
+    receipt_id: int,
+    connector_id: int,
+    mode_override: str | None = None,
+):
+    """Run one receipt through one connector.
+
+    `mode_override` (e.g. "live") forces a single attempt to run in that mode
+    even when the connector's saved mode differs — used by the "Promote
+    dry-run to live" action from the Sync Inspector UI.
+    """
     async with SessionLocal() as db:
         r = await db.get(Receipt, receipt_id)
         c = await db.get(Connector, connector_id)
-        if not r or not c or not c.enabled:
+        if not r or not c:
             return {"ok": False}
+
+        try:
+            effective_mode = (
+                ConnectorMode(mode_override) if mode_override else c.mode
+            )
+        except ValueError:
+            effective_mode = c.mode
+
+        if effective_mode == ConnectorMode.off or not c.enabled:
+            return {"ok": False, "skipped": True, "mode": effective_mode.value}
 
         cls = get_connector_class(c.type.value)
         cfg = decrypt_json(c.config_enc) or {}
         instance = cls(cfg)
+
         prov = await db.get(Provider, r.provider_id) if r.provider_id else None
         client = None
         if r.client_id:
             from app.db.models import Client
             client = await db.get(Client, r.client_id)
+
+        # Per-(org × provider) bookkeeping mapping — feeds Bexio's kb_bill positions
+        account_code: str | None = None
+        vat_code: str | None = None
+        if r.provider_id:
+            mapping = (await db.scalars(select(ProviderAccountMapping).where(
+                ProviderAccountMapping.provider_id == r.provider_id,
+                ProviderAccountMapping.organization_id == r.organization_id,
+            ))).first()
+            if mapping:
+                account_code = mapping.account_code
+                vat_code = mapping.vat_code
+
         upload = ReceiptToUpload(
-            receipt_id=r.id, organization_id=r.organization_id,
-            file_path=Path(r.file_path), filename=r.filename,
+            receipt_id=r.id,
+            organization_id=r.organization_id,
+            file_path=Path(r.file_path),
+            filename=r.filename,
             document_date=r.document_date or r.received_at,
+            due_date=r.due_date,
             provider=(prov.display_name if prov else None),
             client=(client.name if client else None),
-            amount=r.amount, currency=r.currency,
+            amount=r.amount,
+            currency=r.currency,
+            invoice_number=r.invoice_number,
+            vat_rate=float(r.vat_rate) if r.vat_rate is not None else None,
+            vat_amount=float(r.vat_amount) if r.vat_amount is not None else None,
+            account_code=account_code,
+            vat_code=vat_code,
+            notes=r.notes,
         )
-        try:
-            result = await instance.upload(upload)
-        except Exception as e:  # noqa: BLE001
-            result = type("R", (), {"ok": False, "external_id": None, "error": str(e)})()
 
+        try:
+            result: SyncResult = await instance.upload(
+                upload, mode=effective_mode, auto_book=c.auto_book,
+            )
+        except Exception as e:  # noqa: BLE001
+            result = SyncResult(ok=False, error=str(e), mode=effective_mode)
+
+        # Upsert sync_target
         st = (await db.scalars(select(SyncTarget).where(
             SyncTarget.receipt_id == r.id, SyncTarget.connector_id == c.id,
         ))).first()
@@ -684,11 +735,25 @@ async def sync_receipt_to_connector(ctx, receipt_id: int, connector_id: int):
             st = SyncTarget(receipt_id=r.id, connector_id=c.id)
             db.add(st)
 
+        # Audit fields — always populate so the Inspector can show what happened
+        st.mode = effective_mode
+        st.request_payload = result.request_payload
+        st.response_payload = result.response_payload
+        st.response_status_code = result.response_status_code
+
         if result.ok:
-            st.status = SyncStatus.synced
-            st.synced_at = datetime.now(UTC)
-            st.external_id = result.external_id
-            st.error = None
+            if effective_mode == ConnectorMode.dry_run:
+                st.status = SyncStatus.dry_run_ok
+                st.synced_at = None
+                st.external_id = None
+            else:
+                st.status = SyncStatus.synced
+                st.synced_at = datetime.now(UTC)
+                st.external_id = result.external_id
+            st.error = result.error  # may carry a warning even on ok
+            if not result.error:
+                st.retry_count = 0
+                st.next_retry_at = None
         else:
             st.status = SyncStatus.failed
             st.error = (result.error or "unknown")[:1000]
@@ -697,7 +762,12 @@ async def sync_receipt_to_connector(ctx, receipt_id: int, connector_id: int):
             backoff = min(2 ** st.retry_count, 240)
             st.next_retry_at = datetime.now(UTC) + timedelta(minutes=backoff)
         await db.commit()
-        return {"ok": result.ok, "external_id": result.external_id}
+        return {
+            "ok": result.ok,
+            "external_id": result.external_id,
+            "mode": effective_mode.value,
+            "status": st.status.value,
+        }
 
 
 async def sync_receipt_all_connectors(ctx, receipt_id: int):
@@ -709,6 +779,7 @@ async def sync_receipt_all_connectors(ctx, receipt_id: int):
             select(Connector).where(
                 Connector.organization_id == r.organization_id,
                 Connector.enabled.is_(True),
+                Connector.mode != ConnectorMode.off,
             )
         )).all()
     redis = ctx["redis"]

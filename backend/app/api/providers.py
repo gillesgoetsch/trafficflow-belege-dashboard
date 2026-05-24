@@ -8,9 +8,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.security import get_current_user
-from app.db.models import Provider, ProviderRule, User
+from app.db.models import (
+    Provider,
+    ProviderAccountMapping,
+    ProviderRule,
+    User,
+)
 from app.db.session import get_db
-from app.schemas import ProviderIn, ProviderOut, ProviderRuleIn, ProviderRuleOut
+from app.schemas import (
+    ProviderAccountMappingIn,
+    ProviderAccountMappingOut,
+    ProviderIn,
+    ProviderOut,
+    ProviderRuleIn,
+    ProviderRuleOut,
+)
 
 router = APIRouter()
 
@@ -123,4 +135,63 @@ async def delete_rule(
     if not r:
         raise HTTPException(404, "Not found")
     await db.delete(r)
+    await db.commit()
+
+
+# --- Provider × Organization account mappings (Bexio kb_bill auto-fill) -----
+
+
+@router.get("/account-mappings", response_model=list[ProviderAccountMappingOut])
+async def list_account_mappings(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+    organization_id: int | None = None,
+    provider_id: int | None = None,
+):
+    q = select(ProviderAccountMapping)
+    if organization_id:
+        q = q.where(ProviderAccountMapping.organization_id == organization_id)
+    if provider_id:
+        q = q.where(ProviderAccountMapping.provider_id == provider_id)
+    res = await db.scalars(q)
+    return res.all()
+
+
+@router.post("/account-mappings", response_model=ProviderAccountMappingOut, status_code=201)
+async def upsert_account_mapping(
+    body: ProviderAccountMappingIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+):
+    """Create or update the (org, provider) → (account_code, vat_code) mapping.
+
+    POST semantics are upsert by (organization_id, provider_id) — the UI just
+    sends the desired state and we sync it.
+    """
+    existing = (await db.scalars(select(ProviderAccountMapping).where(
+        ProviderAccountMapping.provider_id == body.provider_id,
+        ProviderAccountMapping.organization_id == body.organization_id,
+    ))).first()
+    if existing:
+        existing.account_code = body.account_code
+        existing.vat_code = body.vat_code
+        m = existing
+    else:
+        m = ProviderAccountMapping(**body.model_dump())
+        db.add(m)
+    await db.commit()
+    await db.refresh(m)
+    return m
+
+
+@router.delete("/account-mappings/{mapping_id}", status_code=204)
+async def delete_account_mapping(
+    mapping_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+):
+    m = await db.get(ProviderAccountMapping, mapping_id)
+    if not m:
+        raise HTTPException(404, "Not found")
+    await db.delete(m)
     await db.commit()
