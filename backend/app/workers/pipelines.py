@@ -105,6 +105,38 @@ async def retry_failed_syncs(ctx):
     return count
 
 
+async def requeue_stuck_emails(ctx):
+    """Catch email_messages that were fetched but never processed.
+
+    Happens when the worker container is killed (e.g. during a deploy)
+    after sync_mailbox inserted the email row but before process_message
+    finished — the queued job can be lost. This cron picks up any email
+    stuck at 'pending' for more than 5 minutes and re-enqueues.
+    """
+    redis = ctx["redis"]
+    cutoff = datetime.now(UTC) - timedelta(minutes=5)
+    async with SessionLocal() as db:
+        rows = (await db.scalars(
+            select(EmailMessage).where(
+                EmailMessage.status == EmailMessageStatus.pending,
+                EmailMessage.created_at < cutoff,
+            ).limit(50)
+        )).all()
+        count = 0
+        for em in rows:
+            # Use a unique job_id per attempt so the queue doesn't dedupe
+            # against an old failed entry.
+            attempt = int(datetime.now(UTC).timestamp())
+            await redis.enqueue_job(
+                "process_message", em.id,
+                _job_id=f"process:{em.id}:retry{attempt}",
+            )
+            count += 1
+        if count:
+            logger.info("requeue_stuck_emails.done", count=count)
+    return count
+
+
 # --- IMAP sync --------------------------------------------------------------
 
 

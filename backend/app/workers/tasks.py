@@ -24,6 +24,7 @@ from app.workers.pipelines import (
     poll_all_mailboxes,
     process_message,
     process_uploaded_receipt,
+    requeue_stuck_emails,
     retry_failed_syncs,
     sync_mailbox,
     sync_receipt_all_connectors,
@@ -51,10 +52,14 @@ class WorkerSettings:
         sync_receipt_all_connectors,
         poll_all_mailboxes,
         retry_failed_syncs,
+        requeue_stuck_emails,
     ]
     cron_jobs = [
         cron(poll_all_mailboxes, minute=set(range(0, 60))),  # every minute
         cron(retry_failed_syncs, minute={0, 15, 30, 45}),
+        # Catch emails that got into email_messages but whose process_message
+        # job was lost (e.g. worker killed during a deploy). Runs every 3 min.
+        cron(requeue_stuck_emails, minute={0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57}),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     job_timeout = 600
