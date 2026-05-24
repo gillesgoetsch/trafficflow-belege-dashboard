@@ -70,22 +70,33 @@ of uploads ARE receipts. Only deviate when the markers below are obvious.
                above, keep "receipt".
 
 - "document" : ANYTHING that is clearly NOT an invoice/bill. Examples:
-               * Packing slip / Lieferschein / delivery confirmation
-               * Contract / Vertrag / agreement / ToS / AGB
+               * Packing list / Lieferschein / packing slip / "Confirmed
+                 Packing List" / delivery confirmation / delivery note /
+                 shipping advice
+               * Contract / Vertrag / agreement / ToS / AGB /
+                 Auftragsbestätigung / order confirmation (these acknowledge
+                 the order — they are NOT a bill)
                * Certificate / Zertifikat / Bescheinigung / Bestätigung
                * Attestation / Attest / Nachweis
-               * **Government/official documents**: Fahrzeugausweis, Versicherungs-
-                 ausweis, ID card scans, registration certificates, passport scans,
-                 driving licenses, residence permits
+               * **Government/official documents**: Fahrzeugausweis,
+                 Versicherungsausweis, ID card scans, registration certificates,
+                 passport scans, driving licenses, residence permits
                * Insurance policy documents (not the invoice for the policy)
                * Bank statements / Kontoauszug (when no specific transaction
                  is being billed)
                * Tax assessments / Steuerveranlagung
-               If the document title/heading is "Ausweis", "Bescheinigung",
-               "Zertifikat", "Vertrag", "Lieferschein", "Police", "Antrag"
-               → classify as "document", NOT "receipt". These often have NO
-               amount and the date on them is the document's own validity date
-               (which may be years in the past).
+               HEADING-BASED DETECTION (case-insensitive): if the top of the
+               document prominently says any of these → classify as "document",
+               NOT "receipt":
+                 PACKING LIST · LIEFERSCHEIN · DELIVERY NOTE · SHIPPING ADVICE ·
+                 AUFTRAGSBESTÄTIGUNG · ORDER CONFIRMATION · BESCHEINIGUNG ·
+                 ZERTIFIKAT · AUSWEIS · VERTRAG · POLICE · ANTRAG ·
+                 STATEMENT · KONTOAUSZUG
+               STRUCTURE-BASED DETECTION: if the document has line items but
+               NO visible price column, no "Total"/"Brutto"/"Amount Due", and
+               no currency symbol → it is NOT an invoice. Classify as
+               "document" and set total_amount, currency, vat_rate, vat_amount
+               to null. NEVER invent an amount that doesn't appear in the text.
 
 - "other"    : Marketing email PDFs, gibberish, blank pages, screenshots of
                unrelated things. If you can read an amount + a vendor, it is

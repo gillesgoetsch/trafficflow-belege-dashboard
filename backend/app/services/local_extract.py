@@ -82,16 +82,27 @@ DOCUMENT TYPE RULES — pick exactly ONE. DEFAULT is "receipt".
   "Upcoming - not due yet", "Status: Upcoming", "Vorabrechnung",
   "Preview invoice", "Draft invoice", "Will be charged on", "Scheduled for".
 - "document" : ANYTHING that is clearly NOT an invoice/bill. Includes:
-  * Lieferschein / packing slip / delivery confirmation
-  * Vertrag / contract / ToS / AGB
-  * Zertifikat / Bescheinigung / Bestätigung / Nachweis / Attest
+  * Packing list / Lieferschein / packing slip / Confirmed Packing List /
+    delivery confirmation / shipping advice / delivery note
+  * Vertrag / contract / ToS / AGB / Auftragsbestätigung / order confirmation
+    (a confirmation is NOT a bill — it just acknowledges the order)
+  * Zertifikat / Bescheinigung / Bestätigung / Nachweis / Attest /
+    certificate / attestation
   * Government/official: Fahrzeugausweis, Versicherungsausweis,
     ID card scans, passport, driving license, residence permit, Police
   * Insurance policy document (not its invoice)
   * Kontoauszug / bank statement
   * Tax assessment / Steuerveranlagung
-  If heading is "Ausweis", "Bescheinigung", "Zertifikat", "Vertrag",
-  "Lieferschein", "Police", "Antrag" → classify as "document", NOT "receipt".
+  HEADING-BASED DETECTION (case-insensitive): if the top of the document
+  prominently says any of these → classify as "document", NOT "receipt":
+    PACKING LIST · LIEFERSCHEIN · DELIVERY NOTE · SHIPPING ADVICE ·
+    AUFTRAGSBESTÄTIGUNG · ORDER CONFIRMATION · BESCHEINIGUNG · ZERTIFIKAT ·
+    AUSWEIS · VERTRAG · POLICE · ANTRAG · STATEMENT · KONTOAUSZUG
+  STRUCTURE-BASED DETECTION: if the document has line items but NO
+  visible price column / no "Total" / no "Brutto" / no "Amount Due" /
+  no currency symbol → it is NOT an invoice. Classify as "document"
+  and set total_amount, currency, vat_rate, vat_amount to null.
+  NEVER invent an amount that doesn't appear in the document text.
 - "other" : marketing PDFs, gibberish, blank pages. If you can read an amount
   AND a vendor it is NOT "other".
 
