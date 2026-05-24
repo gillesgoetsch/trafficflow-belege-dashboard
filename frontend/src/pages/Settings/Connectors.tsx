@@ -360,6 +360,17 @@ function ConnectorDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+          {type === "bexio" && (
+            <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-700 dark:text-yellow-300">
+              <strong>Was passiert hier?</strong> Belege dieser Firma werden
+              automatisch als kb_bill-Entwurf in Bexio angelegt (Lieferant,
+              Betrag, Datum, Konto, PDF). Empfohlen: zuerst <em>Dry-Run</em>{" "}
+              wählen — der Connector baut die volle Anfrage, sendet aber
+              nichts. Im Sync-Inspector kannst du dann verifizieren, ob die
+              Daten korrekt zugeordnet werden, und einzelne Belege per Klick
+              auf <em>Live</em> hochstufen.
+            </div>
+          )}
           <div>
             <Label>Firma</Label>
             <Select

@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  Info,
   PlayCircle,
   RefreshCcw,
 } from "lucide-react";
@@ -144,11 +145,14 @@ export default function SyncInspector() {
             Sync-Inspector
           </h1>
           <p className="text-sm text-muted-foreground">
-            Jede ausgehende Connector-Anfrage — was wir senden würden (Dry-Run)
-            oder gesendet haben (Live). Aktiv: {orgLabel}.
+            Jede ausgehende Connector-Anfrage — was wir senden würden
+            (Dry-Run) oder gesendet haben (Live). Aktiv: {orgLabel}.
           </p>
         </div>
       </header>
+
+      <AboutBexioPanel />
+
 
       <Card className="p-3 flex flex-wrap items-end gap-3">
         <FilterSelect
@@ -245,6 +249,92 @@ export default function SyncInspector() {
         />
       )}
     </div>
+  );
+}
+
+function AboutBexioPanel() {
+  return (
+    <Card className="p-0 overflow-hidden">
+      <details className="group">
+        <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer list-none select-none hover:bg-accent/30">
+          <Info className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">
+            Was macht der Bexio-Auto-Fill — und wann sollte ich ihn nutzen?
+          </span>
+          <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground transition-transform group-open:rotate-90" />
+        </summary>
+        <div className="px-4 pb-4 pt-2 space-y-3 text-sm text-muted-foreground border-t border-border">
+          <p>
+            <span className="text-foreground font-medium">Use-Case.</span>{" "}
+            Belege-Hub liest Rechnungen aus dem Postfach, klassifiziert sie und
+            extrahiert Lieferant, Betrag, Datum, USt und Rechnungsnummer.
+            Statt diese Daten in Bexio von Hand als Eingangsrechnung zu
+            erfassen, baut der Bexio-Connector daraus eine{" "}
+            <strong>kb_bill als Entwurf</strong> mit dem PDF als Anhang —
+            mitsamt Lieferanten-Treffer, Konto und USt-Code. Die Buchhaltung
+            prüft in Bexio und bucht ab; ~80% der Tipparbeit fallen weg.
+          </p>
+          <p>
+            <span className="text-foreground font-medium">
+              Pro Firma aktivierbar.
+            </span>{" "}
+            Firmen mit Bexio (TrafficFlow, SicherSatt-AG, …) bekommen je einen
+            Connector. Firmen mit anderer Buchhaltung (Kingnature) bekommen
+            keinen — es passiert dort nichts, keine API-Calls.
+          </p>
+          <div>
+            <span className="text-foreground font-medium">Drei Modi.</span>
+            <ul className="mt-1 list-disc list-inside space-y-0.5">
+              <li>
+                <strong>Aus</strong> — schweigt. Zum „Parken“ eines Connectors
+                ohne Token-Löschen.
+              </li>
+              <li>
+                <strong>Dry-Run</strong> — baut die volle Anfrage zusammen +
+                sucht den Lieferanten lesend in Bexio, schickt aber nichts.
+                Der gesamte JSON-Payload landet hier im Inspector. Ideal zum
+                Validieren neuer Firmen / Provider, oder wenn man der OCR
+                noch nicht 100% traut.
+              </li>
+              <li>
+                <strong>Live</strong> — sendet wirklich. Belege landen als{" "}
+                <em>Entwurf</em> in Bexio (Buchhalter prüft + bucht). Mit{" "}
+                <em>Auto-Book</em> wird zusätzlich automatisch gebucht.
+              </li>
+            </ul>
+          </div>
+          <p>
+            <span className="text-foreground font-medium">Konto-Mapping.</span>{" "}
+            Pro Firma × Anbieter kann unter „Anbieter → Konto-Mapping“
+            festgelegt werden, auf welches Bexio-Konto (z. B. 6510) und mit
+            welchem USt-Code (z. B. VST077) gebucht wird. Ohne Mapping greift
+            der Standardwert des Connectors; fehlt der auch, bleibt das Konto
+            im Entwurf leer.
+          </p>
+          <p>
+            <span className="text-foreground font-medium">Empfohlener Rollout.</span>{" "}
+            Eine Firma im Dry-Run aufsetzen → in dieser Liste die letzten ~10
+            Belege prüfen (Lieferant erkannt? Betrag/Konto korrekt?) → einen
+            einzelnen Beleg via <em>„Live ausführen“</em> hochstufen → in
+            Bexio kontrollieren → erst dann den Connector auf Live umstellen.
+            Auto-Book sollte mindestens einen Abrechnungszyklus aus bleiben,
+            damit man die Bills sieht, bevor sie gebucht werden.
+          </p>
+          <p>
+            <span className="text-foreground font-medium">
+              Phasen-Einordnung.
+            </span>{" "}
+            Wir sind aktuell in <em>Phase 1: alle Belege zuverlässig
+            einziehen + extrahieren</em>. Der Bexio-Auto-Fill ist fertig
+            entwickelt, aber per Default <strong>pro Firma aus</strong>. Er
+            wird selektiv eingeschaltet, sobald für eine Firma die
+            eingehenden Belege sauber extrahiert werden. Der Dry-Run-Modus
+            ist genau dafür da: man kann die Extraktionsqualität durch die
+            „Bexio-Brille“ validieren, ohne irgendwas zu committen.
+          </p>
+        </div>
+      </details>
+    </Card>
   );
 }
 

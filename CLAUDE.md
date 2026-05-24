@@ -187,11 +187,85 @@ All credentials (IMAP passwords, OAuth refresh tokens, Bexio API keys) are encry
 ## Adding a new connector
 
 1. Subclass `app/services/connectors/base.Connector`
-2. Implement `upload(receipt) -> SyncResult` and `test() -> bool`
+2. Implement `upload(receipt, *, mode, auto_book) -> SyncResult` and `test() -> bool`
 3. Register in `connectors/__init__.py` `REGISTRY`
-4. Add UI form in `frontend/src/components/settings/ConnectorForms/`
+4. Add UI form in `frontend/src/pages/Settings/Connectors.tsx`
 
 No core changes needed — connectors are pluggable.
+
+## Bexio auto-fill — use case + workflow
+
+The Bexio connector lifts a receipt all the way into Bexio as a draft
+**Eingangsrechnung (KB_BILL)** with vendor, amount, currency, dates, VAT,
+account code, and the PDF attached — instead of just dumping the file into
+Bexio's inbox. The intent is to remove ~80% of the manual data entry that
+currently sits between "PDF arrived in inbox" and "verbuchter Beleg".
+
+### Per-organization activation
+
+Each org owns at most one Bexio connector. Companies that use Bexio
+(TrafficFlow, SicherSatt-AG, …) get one configured. Companies on other
+bookkeeping tools (Kingnature) simply have no Bexio connector — nothing
+happens for their receipts, no errors, no API traffic.
+
+### Three modes (`connectors.mode`)
+
+- **off** — silent. Nothing is sent. Used to "park" a connector without
+  deleting its credentials.
+- **dry_run** — full kb_bill payload is assembled + Bexio contact search
+  runs (read-only), the payload is logged on `sync_targets.request_payload`
+  but **never POSTed**. The default for newly-created Bexio connectors.
+- **live** — real POSTs. Bills are created in **draft state** by default so
+  the bookkeeper still approves in Bexio. If `connectors.auto_book = true`,
+  the connector calls `/2.0/kb_bill/{id}/bookings` right after creation.
+
+A failed Bexio response, missing supplier match, or malformed payload only
+costs you visibility in the Sync Inspector — never a bad book entry.
+
+### Supplier matching
+
+`POST /2.0/contact/search` with `name_1 LIKE <provider display name>`. On
+match, that contact_id goes into the kb_bill. On miss, the bill is created
+**without** a supplier — Bexio accepts this in draft and the bookkeeper
+assigns one. We do **not** auto-create contacts; that would pollute the CRM.
+
+### Per-(org × provider) account mapping
+
+`provider_account_mappings` table → `account_code` + optional `vat_code`.
+Settings → Anbieter → "Konto-Mapping" lets you, per org, say "Google Cloud
+charges go to 6510, USt-Code VST077". Pipeline reads this on every sync;
+missing mapping → falls back to the connector's `default_account_code`, and
+if that's also empty, the bill is created without an account (still works
+as a draft in Bexio, the bookkeeper picks one).
+
+### Adoption workflow (recommended)
+
+1. **Configure dry_run for the first org.** Confirm three things on the
+   Sync Inspector:
+   - the supplier_id Bexio returns for your top 5 vendors
+   - the `kb_bill` JSON looks right (field names, currency, dates)
+   - account codes resolve via mappings
+2. **Promote one receipt** from the inspector to live — confirm a draft
+   bill appears in Bexio's Kreditoren tab with the PDF attached.
+3. **Flip the connector to live mode** when you trust the field mapping.
+   Keep `auto_book = false` for at least a billing cycle so the bookkeeper
+   still sees every bill before posting.
+4. **Repeat per org**. Each org's connector is independent.
+
+The Sync Inspector at `/settings/sync-inspector` is the authoritative audit
+log — every outbound call is there with full request + response payload,
+filterable by org, connector, mode, status, and date.
+
+### Phase positioning
+
+Bexio auto-fill is feature-complete but lives **off-by-default** per org.
+**Phase 1 (current) is still "make sure all Belege arrive correctly"** —
+mailbox coverage, classification accuracy, OCR fidelity. Bexio is a
+downstream consumer of that data; turning it on for a company only makes
+sense once that company's incoming receipts are reliably extracted with
+correct amount/vendor/date. The dry-run mode exists precisely so you can
+keep validating the extraction quality through the lens of "what would
+Bexio see" without committing anything.
 
 ## Adding a new provider
 
@@ -258,9 +332,10 @@ pnpm i && pnpm dev    # proxies /api to localhost:8000
 
 - ✅ Phase 1 — MVP foundation, IMAP, Layer 1, local storage, single-user auth
 - ✅ Phase 2 — Layer 2 (Haiku), Review queue, HTML→PDF, OCR (Sonnet Vision), sub-client
-- ✅ Phase 3 — OneDrive + Bexio connectors, re-sync/re-process
+- ✅ Phase 3 — OneDrive + Bexio file-only connectors, re-sync/re-process
 - ✅ Phase 4 — Dashboard charts, bulk actions, shortcuts, mobile-responsive, onboarding wizard
 - 🚧 Phase 5 — Google Ads API puller, multi-user roles, external webhooks, drag-and-drop upload (drag-drop is in), error notifications
+- 🆕 Bexio auto-fill (off-by-default per org) — kb_bill draft creation with vendor/account/VAT/PDF; three-mode connector (off/dry_run/live), Sync Inspector, per-(org × provider) account mapping. Sits behind per-company activation while Phase 1 ingestion quality is still being tuned. See "Bexio auto-fill — use case + workflow" above.
 
 ## Known TODOs / Gotchas
 
