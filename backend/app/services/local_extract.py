@@ -508,7 +508,12 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
 
     # Multi-amount disambiguation guard
     if pdf_text:
-        amounts = re.findall(r"(?<!\d)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))(?!\d)", pdf_text)
+        # Strip date-like patterns (DD.MM.YYYY, MM/DD/YYYY, YYYY-MM-DD) BEFORE
+        # scanning for money. Otherwise '30.01' inside '30.01.2026' is matched
+        # as if it were a price (€30.01), polluting the top-two list.
+        scrubbed = re.sub(r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b", " ", pdf_text)
+        scrubbed = re.sub(r"\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b", " ", scrubbed)
+        amounts = re.findall(r"(?<!\d)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))(?!\d)", scrubbed)
         nums: list[float] = []
         for a in amounts:
             try:
