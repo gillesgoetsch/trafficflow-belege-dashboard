@@ -102,12 +102,24 @@ Return STRICT JSON only with this shape:
   "reasoning": "short string"
 }
 
-Rules:
-- A receipt/invoice/payment confirmation/Rechnung/Quittung/Zahlungsbestätigung qualifies.
-- Marketing emails, signup confirmations, password resets, newsletters DO NOT.
-- Pick provider_slug from a normalized form of the sender's company name
-  (e.g. "facebook-ads", "google-ads", "spotify", "infomaniak", "bexio", "openai").
-- If unsure, set is_receipt=false with low confidence."""
+What IS a receipt (is_receipt=true):
+- Receipt / invoice / payment confirmation / Rechnung / Quittung / Zahlungsbestätigung
+- The email mentions an amount that was paid, will be paid, or is due
+- The email mentions a transaction, charge, billing, or subscription period
+
+What is NOT a receipt (is_receipt=false, confidence 0.9+):
+- Privacy-policy / Datenschutzrichtlinie updates
+- Terms-of-service / Nutzungsbedingungen updates
+- Marketing emails, newsletters, "new feature" announcements
+- Signup confirmations, "verify your email", password resets
+- "Welcome to X" onboarding emails (without a charge)
+- Notifications about ad-account status (account approved, ad rejected) WITHOUT money
+- Even if the sender is a known billing provider (Spotify, Meta, Stripe), look at
+  the CONTENT — if there is no amount, no transaction, no payment, it's not a receipt.
+
+Pick provider_slug from a normalized form of the sender's company name
+(e.g. "facebook-ads", "google-ads", "spotify", "infomaniak", "bexio", "openai").
+If unsure, set is_receipt=false with low confidence."""
 
 
 def _trim(text: str | None, limit: int) -> str:

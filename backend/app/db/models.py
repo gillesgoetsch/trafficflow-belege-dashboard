@@ -464,3 +464,48 @@ class AuditEvent(Base, TimestampMixin):
     target_type: Mapped[str | None] = mapped_column(String(64))
     target_id: Mapped[int | None] = mapped_column(BigInteger)
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+# --- Email skip rules + brand routes ----------------------------------------
+
+
+class EmailSkipRule(Base, TimestampMixin):
+    """Patterns that mark an inbound email as not-a-receipt before classification.
+
+    Catches privacy-policy / terms-of-service / newsletter emails from senders
+    that *also* send real receipts (Spotify, Meta, etc.) — those would otherwise
+    pass Layer 1 and get turned into a 0 CHF receipt.
+    """
+    __tablename__ = "email_skip_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=True,
+    )  # null = applies to every org
+    match_type: Mapped[MatchType] = mapped_column(Enum(MatchType, name="match_type"), nullable=False)
+    match_value: Mapped[str] = mapped_column(String(512), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(255))
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+
+
+class BrandRoute(Base, TimestampMixin):
+    """Re-route a receipt to a different organization based on body/subject content.
+
+    Example: a Meta Ads receipt lands on the TrafficFlow inbox, but the body
+    contains "Transaction for FIMS" — FIMS is a brand of kingnature, so the
+    receipt belongs in the kingnature org with brand="fims".
+    """
+    __tablename__ = "brand_routes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False,
+    )
+    target_organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False,
+    )
+    provider_id: Mapped[int | None] = mapped_column(
+        ForeignKey("providers.id", ondelete="SET NULL"), nullable=True,
+    )  # optional — only fire when matching this specific provider
+    match_type: Mapped[MatchType] = mapped_column(Enum(MatchType, name="match_type"), nullable=False)
+    match_value: Mapped[str] = mapped_column(String(512), nullable=False)
+    brand: Mapped[str | None] = mapped_column(String(64))
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)

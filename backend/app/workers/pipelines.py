@@ -19,12 +19,15 @@ from app.config import settings
 from app.core.encryption import decrypt_json, decrypt_str
 from app.core.logging import get_logger
 from app.db.models import (
+    BrandRoute,
     ClassificationLayer,
     Connector,
     ConnectorMode,
     EmailMessage,
     EmailMessageStatus,
+    EmailSkipRule,
     Mailbox,
+    MatchType,
     Organization,
     Provider,
     ProviderAccountMapping,
@@ -61,6 +64,85 @@ from app.services.ocr import (
 from app.services.pdf_renderer import html_to_pdf
 
 logger = get_logger(__name__)
+
+
+# --- Skip rules + brand routing helpers -------------------------------------
+
+
+def _match_haystack(mt: MatchType, sender_email: str, sender_domain: str,
+                    subject: str, body: str, to_address: str) -> str:
+    if mt == MatchType.sender_domain:
+        return sender_domain
+    if mt == MatchType.sender_email:
+        return sender_email
+    if mt == MatchType.sender_contains:
+        return sender_email
+    if mt == MatchType.subject_contains:
+        return subject
+    if mt == MatchType.body_contains:
+        return body
+    if mt == MatchType.plus_alias:
+        return to_address
+    return ""
+
+
+def _rule_hits(mt: MatchType, value: str, haystack: str) -> bool:
+    v = (value or "").lower().strip()
+    h = (haystack or "").lower()
+    if not v:
+        return False
+    if mt == MatchType.sender_domain:
+        return h.endswith(v)
+    if mt == MatchType.sender_email:
+        return h == v
+    return v in h
+
+
+async def find_skip_rule(
+    db, organization_id: int, sender_email: str | None, subject: str | None,
+    body_text: str | None, to_address: str | None,
+) -> "EmailSkipRule | None":
+    """Return the highest-priority skip rule that matches this email."""
+    rules = (await db.scalars(
+        select(EmailSkipRule)
+        .where((EmailSkipRule.organization_id == organization_id) | (EmailSkipRule.organization_id.is_(None)))
+        .order_by(EmailSkipRule.priority.desc())
+    )).all()
+    se = (sender_email or "").lower()
+    sd = se.split("@", 1)[-1] if "@" in se else ""
+    sub = subject or ""
+    bdy = body_text or ""
+    to = to_address or ""
+    for r in rules:
+        hay = _match_haystack(r.match_type, se, sd, sub, bdy, to)
+        if _rule_hits(r.match_type, r.match_value, hay):
+            return r
+    return None
+
+
+async def find_brand_route(
+    db, source_organization_id: int, provider_id: int | None,
+    sender_email: str | None, subject: str | None, body_text: str | None,
+    to_address: str | None,
+) -> "BrandRoute | None":
+    """Return the highest-priority brand route that matches."""
+    rules = (await db.scalars(
+        select(BrandRoute)
+        .where(BrandRoute.source_organization_id == source_organization_id)
+        .order_by(BrandRoute.priority.desc())
+    )).all()
+    se = (sender_email or "").lower()
+    sd = se.split("@", 1)[-1] if "@" in se else ""
+    sub = subject or ""
+    bdy = body_text or ""
+    to = to_address or ""
+    for r in rules:
+        if r.provider_id and provider_id and r.provider_id != provider_id:
+            continue
+        hay = _match_haystack(r.match_type, se, sd, sub, bdy, to)
+        if _rule_hits(r.match_type, r.match_value, hay):
+            return r
+    return None
 
 
 # --- Cron jobs --------------------------------------------------------------
@@ -232,6 +314,24 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
             from bs4 import BeautifulSoup
             body_text = BeautifulSoup(html, "lxml").get_text(" ", strip=True)[:4000]
 
+        # --- Pre-classification skip filter -----------------------------------
+        # Catches privacy-policy / TOS / newsletter emails from senders that
+        # otherwise have a positive Layer 1 rule (Spotify, Meta, etc).
+        skip = await find_skip_rule(
+            db, em.organization_id,
+            em.sender_email, em.subject, body_text, em.to_address,
+        )
+        if skip:
+            em.status = EmailMessageStatus.not_a_receipt
+            await db.commit()
+            logger.info(
+                "process_message.skipped",
+                email_message_id=em.id,
+                rule_id=skip.id,
+                reason=skip.reason or "matched email_skip_rules",
+            )
+            return {"ok": True, "result": "not_a_receipt", "skip_rule_id": skip.id}
+
         inp = ClassificationInput(
             sender_email=em.sender_email,
             sender_name=em.sender_name,
@@ -361,9 +461,35 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
                     provider_id = provider.id
                     prov_name = provider.display_name
 
-        # Resolve sub-client
+        # --- Brand routing -----------------------------------------------------
+        # After we have both classification + the actual document text, check
+        # whether the body identifies a known brand that belongs to a different
+        # organization (e.g. Meta Ads "Transaction for FIMS" → kingnature).
+        effective_org_id = em.organization_id
+        brand_override: str | None = None
+        haystack_for_brand = (body_text or "") + "\n" + (meta_text or "")
+        route = await find_brand_route(
+            db, em.organization_id, provider_id,
+            em.sender_email, em.subject, haystack_for_brand, em.to_address,
+        )
+        if route:
+            effective_org_id = route.target_organization_id
+            brand_override = route.brand
+            log_entry["brand_route_id"] = route.id
+            log_entry["org_reassigned"] = {
+                "from": em.organization_id, "to": effective_org_id, "brand": route.brand,
+            }
+            # Re-resolve org so template + currency follow the target org
+            org = await db.get(Organization, effective_org_id)
+            logger.info(
+                "process_message.brand_routed",
+                email_message_id=em.id, route_id=route.id,
+                from_org=em.organization_id, to_org=effective_org_id, brand=route.brand,
+            )
+
+        # Resolve sub-client (against the effective org, not the source)
         sub_client = await resolve_client(db, ResolveInput(
-            organization_id=em.organization_id,
+            organization_id=effective_org_id,
             provider_id=provider_id,
             to_address=em.to_address,
             sender_email=em.sender_email,
@@ -382,7 +508,7 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
             amount=meta.amount, currency=currency, invoice_number=meta.invoice_number,
         )
 
-        out_dir = settings.storage_path / f"org-{em.organization_id}" / f"{doc_date.year}" / f"{doc_date.month:02d}"
+        out_dir = settings.storage_path / f"org-{effective_org_id}" / f"{doc_date.year}" / f"{doc_date.month:02d}"
         out_dir.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256(chosen_pdf_bytes).hexdigest()
         out_path = out_dir / filename
@@ -397,6 +523,7 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
         new_layer = layer_enum_map.get(result.layer, ClassificationLayer.layer3)
 
         if existing:
+            existing.organization_id = effective_org_id
             existing.provider_id = provider_id
             existing.client_id = sub_client.id if sub_client else None
             existing.document_date = doc_date
@@ -413,12 +540,14 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
             existing.confidence = result.confidence
             existing.status = ReceiptStatus.review_needed if review_needed else ReceiptStatus.processed
             existing.review_reason = result.notes if review_needed else None
+            if brand_override:
+                existing.brand = brand_override
             existing.raw_metadata = {**(existing.raw_metadata or {}), "source": chosen_source, "ocr": bool(ocr_data)}
             existing.processing_log = (existing.processing_log or []) + [log_entry]
             receipt = existing
         else:
             receipt = Receipt(
-                organization_id=em.organization_id,
+                organization_id=effective_org_id,
                 mailbox_id=em.mailbox_id,
                 email_message_id=em.id,
                 provider_id=provider_id,
@@ -438,6 +567,7 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
                 confidence=result.confidence,
                 status=ReceiptStatus.review_needed if review_needed else ReceiptStatus.processed,
                 review_reason=result.notes if review_needed else None,
+                brand=brand_override,
                 raw_metadata={"source": chosen_source, "ocr": bool(ocr_data)},
                 processing_log=[log_entry],
             )
