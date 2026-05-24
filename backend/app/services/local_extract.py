@@ -480,9 +480,13 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
                 f"{months_full[m]} {d:02d}, {y}",
                 f"{d} {months_full[m]} {y}",
                 f"{d:02d} {months_full[m]} {y}",
-                # German short month (Jan/Feb/Mär/Apr/Mai/...)
+                # German short month (Jan/Feb/Mär/Apr/Mai/...). German often
+                # uses "15. Apr. 2026" with a trailing period on the
+                # abbreviation, so include both with and without it.
                 f"{d}. {months_de_short[m]} {y}",
+                f"{d}. {months_de_short[m]}. {y}",
                 f"{d:02d}. {months_de_short[m]} {y}",
+                f"{d:02d}. {months_de_short[m]}. {y}",
                 f"{d} {months_de_short[m]} {y}",
                 # German full month name (15. März 2026, "15. Januar 2026")
                 f"{d}. {months_de_full[m]} {y}",
