@@ -510,6 +510,39 @@ def is_confident(r: ClaudeReceipt, pdf_text: str | None = None) -> tuple[bool, s
         if not any(c in pdf_text for c in candidates):
             return False, f"amount_not_in_pdf:{amount_str}"
 
+    # Multi-amount disambiguation guard — but skip it when the extracted
+    # amount appears next to an explicit total label. Prorated invoices
+    # (Anthropic, Stripe) can have line items larger than the actual total
+    # due to credits/refunds; the model is correct in those cases.
+    if pdf_text and r.total_amount is not None:
+        amt_s = str(r.total_amount)
+        # Variants the amount could appear in
+        amt_variants = [amt_s, amt_s.replace(".", ",")]
+        total_labels = [
+            "total", "amount paid", "amount due", "total due", "balance due",
+            "betrag inkl", "rechnungsbetrag", "gesamtbetrag", "gesamt (brutto)",
+            "zahlbetrag", "paid",
+        ]
+        # Check if any (label, amount) pair sits within 80 chars of each other
+        lower = pdf_text.lower()
+        anchored = False
+        for variant in amt_variants:
+            v = variant.lower()
+            idx = 0
+            while True:
+                pos = lower.find(v, idx)
+                if pos < 0:
+                    break
+                window = lower[max(0, pos - 80):pos + 80]
+                if any(lbl in window for lbl in total_labels):
+                    anchored = True
+                    break
+                idx = pos + 1
+            if anchored:
+                break
+        if anchored:
+            return True, "ok_receipt"
+
     # Multi-amount disambiguation guard
     if pdf_text:
         # Strip date-like patterns (DD.MM.YYYY, MM/DD/YYYY, YYYY-MM-DD) BEFORE
