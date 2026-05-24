@@ -69,10 +69,23 @@ of uploads ARE receipts. Only deviate when the markers below are obvious.
                charge — those ARE upcoming. Without an explicit marker like
                above, keep "receipt".
 
-- "document" : ONLY if it is clearly NOT an invoice — a packing slip
-               (Lieferschein), delivery confirmation, attestation, contract,
-               certificate, terms of service. No amount visible and no
-               "Rechnung/Invoice/Receipt" wording. Random scan of a non-bill.
+- "document" : ANYTHING that is clearly NOT an invoice/bill. Examples:
+               * Packing slip / Lieferschein / delivery confirmation
+               * Contract / Vertrag / agreement / ToS / AGB
+               * Certificate / Zertifikat / Bescheinigung / Bestätigung
+               * Attestation / Attest / Nachweis
+               * **Government/official documents**: Fahrzeugausweis, Versicherungs-
+                 ausweis, ID card scans, registration certificates, passport scans,
+                 driving licenses, residence permits
+               * Insurance policy documents (not the invoice for the policy)
+               * Bank statements / Kontoauszug (when no specific transaction
+                 is being billed)
+               * Tax assessments / Steuerveranlagung
+               If the document title/heading is "Ausweis", "Bescheinigung",
+               "Zertifikat", "Vertrag", "Lieferschein", "Police", "Antrag"
+               → classify as "document", NOT "receipt". These often have NO
+               amount and the date on them is the document's own validity date
+               (which may be years in the past).
 
 - "other"    : Marketing email PDFs, gibberish, blank pages, screenshots of
                unrelated things. If you can read an amount + a vendor, it is

@@ -10,7 +10,7 @@ import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye, Loader2, Cloud, Cpu } from "lucide-react";
+import { Download, RefreshCw, Trash2, FilterX, FileSpreadsheet, BookCheck, Eye, Loader2, Cloud, Cpu, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 import { fmtDate, fmtMoney } from "../lib/format";
 import { ReceiptDetailPanel } from "../components/receipts/ReceiptDetailPanel";
 import { toast } from "../components/ui/toaster";
@@ -29,6 +29,9 @@ export default function Inbox() {
   const [datePreset, setDatePreset] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  const [dateField, setDateField] = useState<"document_date" | "received_at">("document_date");
+  const [sortColumn, setSortColumn] = useState<string>("document_date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
@@ -82,7 +85,23 @@ export default function Inbox() {
     booked: booked,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
+    date_field: dateField,
     search: search || undefined,
+    sort: sortColumn,
+    order: sortDir,
+  };
+
+  const toggleSort = (col: string) => {
+    if (sortColumn === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(col);
+      setSortDir("desc");
+    }
+  };
+  const sortIcon = (col: string) => {
+    if (sortColumn !== col) return <ChevronsUpDown className="h-3 w-3 opacity-30 inline ml-1" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 inline ml-1" /> : <ArrowDown className="h-3 w-3 inline ml-1" />;
   };
 
   const { data, isFetching } = useQuery<ReceiptList>({
@@ -312,10 +331,19 @@ export default function Inbox() {
             <SelectItem value="q4_lastyear">Q4 (letztes Jahr)</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={dateField} onValueChange={(v) => setDateField(v as any)}>
+          <SelectTrigger className="w-44" title="Welches Datum wird gefiltert">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="document_date">Filter: Rechnungsdatum</SelectItem>
+            <SelectItem value="received_at">Filter: Scan-/Eingangsdatum</SelectItem>
+          </SelectContent>
+        </Select>
         <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDatePreset(""); }} className="w-36" title="Von" />
         <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setDatePreset(""); }} className="w-36" title="Bis" />
         {(search || providerId || status || paymentMethod || brand || booked || dateFrom || dateTo) && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setProviderId(null); setStatus(undefined); setPaymentMethod(undefined); setBrand(undefined); setBooked(undefined); setDateFrom(""); setDateTo(""); setDatePreset(""); }}>
+          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setProviderId(null); setStatus(undefined); setPaymentMethod(undefined); setBrand(undefined); setBooked(undefined); setDateFrom(""); setDateTo(""); setDatePreset(""); setDateField("document_date"); }}>
             <FilterX className="h-3.5 w-3.5 mr-1" /> Zurücksetzen
           </Button>
         )}
@@ -326,14 +354,33 @@ export default function Inbox() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-8"></TableHead>
-              <TableHead title="Rechnungsdatum / Date of issue">Rechnungsdatum</TableHead>
-              <TableHead>Anbieter</TableHead>
-              <TableHead>Marke</TableHead>
-              <TableHead>Dateiname</TableHead>
-              <TableHead className="text-right">Betrag</TableHead>
-              <TableHead>Zahlung</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Verbucht</TableHead>
+              <TableHead onClick={() => toggleSort("document_date")} className="cursor-pointer select-none" title="Rechnungsdatum (vom Dokument selbst)">
+                Rechnungsdatum{sortIcon("document_date")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("received_at")} className="cursor-pointer select-none" title="Wann eingegangen / hochgeladen">
+                Empfangen{sortIcon("received_at")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("provider_id")} className="cursor-pointer select-none">
+                Anbieter{sortIcon("provider_id")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("brand")} className="cursor-pointer select-none">
+                Marke{sortIcon("brand")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("filename")} className="cursor-pointer select-none">
+                Dateiname{sortIcon("filename")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("amount")} className="cursor-pointer select-none text-right">
+                Betrag{sortIcon("amount")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("payment_method")} className="cursor-pointer select-none">
+                Zahlung{sortIcon("payment_method")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("status")} className="cursor-pointer select-none">
+                Status{sortIcon("status")}
+              </TableHead>
+              <TableHead onClick={() => toggleSort("booked_at")} className="cursor-pointer select-none">
+                Verbucht{sortIcon("booked_at")}
+              </TableHead>
               <TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
@@ -361,6 +408,7 @@ export default function Inbox() {
                   />
                 </TableCell>
                 <TableCell className="whitespace-nowrap">{fmtDate(r.document_date)}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground text-xs">{fmtDate(r.received_at)}</TableCell>
                 <TableCell>{(providers ?? []).find((p) => p.id === r.provider_id)?.display_name ?? "—"}</TableCell>
                 <TableCell>{r.brand ? <Badge variant="outline">{r.brand}</Badge> : "—"}</TableCell>
                 <TableCell className="max-w-[260px] truncate" title={r.filename}>{r.filename}</TableCell>
@@ -383,7 +431,7 @@ export default function Inbox() {
               </TableRow>
             ))}
             {!items.length && (
-              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">Keine Belege entsprechen den Filtern</TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-12">Keine Belege entsprechen den Filtern</TableCell></TableRow>
             )}
           </TableBody>
         </Table>

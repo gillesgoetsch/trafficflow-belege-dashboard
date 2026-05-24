@@ -81,9 +81,17 @@ DOCUMENT TYPE RULES — pick exactly ONE. DEFAULT is "receipt".
 - "upcoming" : ONLY if the document explicitly says one of:
   "Upcoming - not due yet", "Status: Upcoming", "Vorabrechnung",
   "Preview invoice", "Draft invoice", "Will be charged on", "Scheduled for".
-- "document" : a clearly non-invoice file (Lieferschein / packing slip,
-  delivery confirmation, contract, certificate, attestation, ToS) with NO
-  amount and NO "Rechnung/Invoice/Receipt" wording.
+- "document" : ANYTHING that is clearly NOT an invoice/bill. Includes:
+  * Lieferschein / packing slip / delivery confirmation
+  * Vertrag / contract / ToS / AGB
+  * Zertifikat / Bescheinigung / Bestätigung / Nachweis / Attest
+  * Government/official: Fahrzeugausweis, Versicherungsausweis,
+    ID card scans, passport, driving license, residence permit, Police
+  * Insurance policy document (not its invoice)
+  * Kontoauszug / bank statement
+  * Tax assessment / Steuerveranlagung
+  If heading is "Ausweis", "Bescheinigung", "Zertifikat", "Vertrag",
+  "Lieferschein", "Police", "Antrag" → classify as "document", NOT "receipt".
 - "other" : marketing PDFs, gibberish, blank pages. If you can read an amount
   AND a vendor it is NOT "other".
 

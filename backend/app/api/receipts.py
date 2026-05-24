@@ -42,6 +42,7 @@ def _filter_query(
     amount_max: Decimal | None,
     search: str | None,
     booked: str | None = None,  # "yes" | "no" | None
+    date_field: str = "document_date",  # "document_date" | "received_at"
 ):
     conds = []
     if organization_id:
@@ -62,10 +63,15 @@ def _filter_query(
         conds.append(Receipt.booked_at.is_not(None))
     elif booked == "no":
         conds.append(Receipt.booked_at.is_(None))
+    # The date filter can apply to document_date (the invoice's own date) or
+    # received_at (when it landed in the system). The latter is what you want
+    # when filtering for "scanned this quarter" — old documents like a
+    # Fahrzeugausweis from 2008 only need to appear under Q-of-upload.
+    date_col = Receipt.received_at if date_field == "received_at" else Receipt.document_date
     if date_from:
-        conds.append(Receipt.document_date >= date_from)
+        conds.append(date_col >= date_from)
     if date_to:
-        conds.append(Receipt.document_date <= date_to)
+        conds.append(date_col <= date_to)
     if amount_min is not None:
         conds.append(Receipt.amount >= amount_min)
     if amount_max is not None:
@@ -95,6 +101,7 @@ async def list_receipts(
     booked: str | None = Query(None, description="yes | no"),
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    date_field: str = Query("document_date", description="document_date | received_at"),
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
     search: str | None = None,
@@ -103,15 +110,22 @@ async def list_receipts(
 ):
     cond = _filter_query(organization_id, mailbox_id, provider_id, client_id, status,
                          payment_method, brand,
-                         date_from, date_to, amount_min, amount_max, search, booked)
+                         date_from, date_to, amount_min, amount_max, search, booked,
+                         date_field=date_field)
 
     sort_col_map = {
         "document_date": Receipt.document_date,
+        "due_date": Receipt.due_date,
         "received_at": Receipt.received_at,
         "amount": Receipt.amount,
         "filename": Receipt.filename,
         "status": Receipt.status,
         "created_at": Receipt.created_at,
+        "provider_id": Receipt.provider_id,
+        "payment_method": Receipt.payment_method,
+        "brand": Receipt.brand,
+        "booked_at": Receipt.booked_at,
+        "document_type": Receipt.document_type,
     }
     sort_col = sort_col_map.get(sort, Receipt.document_date)
     sort_expr = sort_col.desc() if order == "desc" else sort_col.asc()
