@@ -852,10 +852,56 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
             amount=meta.amount, currency=currency, invoice_number=meta.invoice_number,
         )
 
+        digest = hashlib.sha256(chosen_pdf_bytes).hexdigest()
+
+        # --- Cross-email dedup by content hash ---------------------------------
+        # If another email already produced a receipt with the exact same PDF
+        # content, do NOT create a second copy (Klaviyo + Stripe both notify
+        # for the same charge; Meta sometimes duplicates). Link the email to
+        # the existing receipt and mark this email as finished.
+        existing_by_sha = (await db.scalars(
+            select(Receipt).where(
+                Receipt.file_sha256 == digest,
+                Receipt.email_message_id != em.id,
+            )
+        )).first()
+        if existing_by_sha and not (existing := (await db.scalars(
+            select(Receipt).where(Receipt.email_message_id == em.id)
+        )).first()):
+            em.status = EmailMessageStatus.finished
+            log_entry["dedup_to_receipt_id"] = existing_by_sha.id
+            await db.commit()
+            logger.info(
+                "process_message.deduped_by_sha",
+                email_message_id=em.id, existing_receipt_id=existing_by_sha.id,
+            )
+            return {"ok": True, "deduped": True, "receipt_id": existing_by_sha.id}
+
         out_dir = settings.storage_path / f"org-{effective_org_id}" / f"{doc_date.year}" / f"{doc_date.month:02d}"
         out_dir.mkdir(parents=True, exist_ok=True)
-        digest = hashlib.sha256(chosen_pdf_bytes).hexdigest()
         out_path = out_dir / filename
+        # Filename-collision protection: if a different file already lives at
+        # this path, append a numeric suffix so we don't overwrite real
+        # content with the rendered email body.
+        if out_path.exists():
+            try:
+                existing_bytes = out_path.read_bytes()
+                if hashlib.sha256(existing_bytes).hexdigest() != digest:
+                    stem, suffix = out_path.stem, out_path.suffix
+                    counter = 2
+                    while True:
+                        candidate = out_dir / f"{stem}-{counter}{suffix}"
+                        if not candidate.exists():
+                            out_path = candidate
+                            filename = candidate.name
+                            break
+                        if hashlib.sha256(candidate.read_bytes()).hexdigest() == digest:
+                            out_path = candidate
+                            filename = candidate.name
+                            break
+                        counter += 1
+            except OSError:
+                pass
         out_path.write_bytes(chosen_pdf_bytes)
 
         # Persist Receipt — idempotent reprocess updates existing row.
