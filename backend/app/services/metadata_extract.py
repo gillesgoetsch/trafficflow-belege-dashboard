@@ -67,14 +67,31 @@ def parse_first_date(text: str) -> datetime | None:
         return None
 
 
+# Label-anchored amount: requires a word boundary on BOTH sides so "gesamt"
+# does NOT match "Gesamtpreis" (column header). "rechnungsbetrag" /
+# "gesamtbetrag" are the strongest signals (Netcup-style invoices).
 _AMOUNT_LINE = re.compile(
-    r"(?P<label>total|gesamt|summe|total amount|amount due|zu zahlen|rechnungsbetrag|grand total)"
-    r"[^\d]{0,30}(?P<cur>CHF|EUR|USD|GBP|Fr\.?|€|\$|£)?\s*(?P<amt>\d{1,3}(?:[ '.,]\d{3})*(?:[.,]\d{2})?)",
+    r"(?P<label>rechnungsbetrag|gesamtbetrag|grand\s*total|total\s*amount|amount\s*due"
+    r"|zu\s*zahlen|gesamt|summe|total)\b"
+    r"[^\d]{0,30}(?P<cur>CHF|EUR|USD|GBP|Fr\.?|€|\$|£)?\s*"
+    r"(?P<amt>\d{1,3}(?:[ '.,]\d{3})*(?:[.,]\d{2})?)\s*"
+    r"(?P<curaft>CHF|EUR|USD|GBP|Fr\.?|€|\$|£)?",
     re.IGNORECASE,
 )
 _AMOUNT_FALLBACK = re.compile(
     r"(?P<cur>CHF|EUR|USD|GBP|Fr\.?|€|\$|£)\s*(?P<amt>\d{1,3}(?:[ '.,]\d{3})*(?:[.,]\d{2}))"
 )
+_LABEL_PRIORITY = {
+    "rechnungsbetrag": 100,
+    "gesamtbetrag": 95,
+    "grand total": 90,
+    "total amount": 85,
+    "amount due": 80,
+    "zu zahlen": 75,
+    "summe": 60,
+    "total": 50,
+    "gesamt": 40,
+}
 
 
 def _normalize_amount(raw: str) -> Decimal | None:
@@ -98,16 +115,37 @@ def _normalize_amount(raw: str) -> Decimal | None:
 
 
 def parse_amount(text: str) -> tuple[Decimal | None, str | None]:
-    """Return (amount, currency) — best-effort."""
+    """Return (amount, currency) — best-effort.
+
+    Strategy: gather all label-anchored hits, pick the highest-priority
+    label, and within that label the LAST occurrence (totals on multi-page
+    invoices appear at the bottom). Falls back to currency-first scan.
+    Currency may appear before OR after the amount ("8,24 EUR" vs "EUR 8,24").
+    """
     if not text:
         return None, None
     sym_to_iso = {"€": "EUR", "$": "USD", "£": "GBP", "Fr.": "CHF", "Fr": "CHF"}
 
+    hits: list[tuple[int, int, Decimal | None, str | None]] = []
     for m in _AMOUNT_LINE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group("label").lower()).strip()
+        prio = _LABEL_PRIORITY.get(label, 30)
         amt = _normalize_amount(m.group("amt"))
-        cur = m.group("cur")
+        if amt is None:
+            continue
+        cur = m.group("cur") or m.group("curaft")
         iso = sym_to_iso.get(cur or "", cur)
+        hits.append((prio, m.start(), amt, iso))
+
+    if hits:
+        # Highest priority wins; ties → last occurrence in the document.
+        hits.sort(key=lambda h: (h[0], h[1]), reverse=True)
+        # If currency missing on the chosen hit, infer from the doc.
+        amt, iso = hits[0][2], hits[0][3]
+        if not iso:
+            iso = _infer_currency(text)
         return amt, iso
+
     m = _AMOUNT_FALLBACK.search(text)
     if m:
         amt = _normalize_amount(m.group("amt"))
@@ -115,10 +153,20 @@ def parse_amount(text: str) -> tuple[Decimal | None, str | None]:
         iso = sym_to_iso.get(cur or "", cur)
         return amt, iso
     # Maybe just one currency mentioned but no amount near it
+    iso = _infer_currency(text)
+    return None, iso
+
+
+def _infer_currency(text: str) -> str | None:
+    """Pick the currency code/symbol that appears most often in the document."""
+    counts: dict[str, int] = {}
     for iso, pats in CURRENCY_HINTS.items():
-        if any(re.search(p, text) for p in pats):
-            return None, iso
-    return None, None
+        c = sum(len(re.findall(p, text)) for p in pats)
+        if c:
+            counts[iso] = c
+    if not counts:
+        return None
+    return max(counts, key=counts.get)
 
 
 _INV_RE = re.compile(

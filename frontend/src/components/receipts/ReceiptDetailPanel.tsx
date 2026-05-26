@@ -112,7 +112,7 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
       <DialogContent className="max-w-5xl h-[85vh] grid-cols-2 grid grid-rows-[auto_1fr] p-0">
         {data && (
           <>
-            <div className="col-span-2 p-4 border-b border-border flex items-center justify-between">
+            <div className="col-span-2 p-4 pr-12 border-b border-border flex items-center justify-between gap-3 flex-wrap">
               <div className="min-w-0">
                 <DialogTitle className="truncate">{data.filename}</DialogTitle>
                 <DialogDescription className="text-xs">
@@ -120,7 +120,7 @@ export function ReceiptDetailPanel({ id, onClose }: { id: number | null; onClose
                   {data.document_type && data.document_type !== "receipt" ? ` · ${DOCUMENT_TYPE_LABEL[data.document_type as DocumentType] || data.document_type}` : ""}
                 </DialogDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {data.booked_at ? (
                   <Button size="sm" variant="outline" onClick={() => unbook.mutate()}><BookX className="h-3.5 w-3.5 mr-1" /> Buchung zurück</Button>
                 ) : (
