@@ -115,6 +115,12 @@ PROVIDER_SEEDS: list[tuple[str, str, str | None, str | None, str | None, list[tu
     ("hostkey", "Hostkey", "Hosting", "USD", "server", [
         (MatchType.sender_domain, "hostkey.com", 130),
     ]),
+
+    # ---- Added 2026-07-15 (health check): recurring vendors missing from catalog
+    ("vercel", "Vercel", "Hosting", "USD", "server", [
+        (MatchType.sender_domain, "vercel.com", 130),
+        (MatchType.subject_contains, "receipt from Vercel", 120),
+    ]),
 ]
 
 

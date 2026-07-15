@@ -486,7 +486,9 @@ async def process_inbound_file(ctx, inbound_file_id: int):
             if ocr_data.invoice_number and not meta.invoice_number:
                 meta.invoice_number = ocr_data.invoice_number
 
-        currency = meta.currency or (org.default_currency if org else "CHF")
+        # Only default to the org currency when an amount was found; otherwise
+        # leave it NULL instead of fabricating "CHF".
+        currency = meta.currency or (org.default_currency if (meta.amount is not None and org) else None)
         if meta.date:
             doc_date = meta.date
 
@@ -805,6 +807,48 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
                     provider_id = provider.id
                     prov_name = provider.display_name
 
+        # HTML-rendered receipts only got regex extraction above, which often
+        # misses amounts living in styled tables / images (Meta Ads, Klaviyo, …).
+        # When regex found no amount on a genuine (non-review) receipt, fall back
+        # to the same Claude extractor the upload path uses. Gated to the failing
+        # case so cost stays bounded; extract_from_pdf self-checks the API key and
+        # returns an "__unavailable__" sentinel on any failure, so data is never lost.
+        if chosen_source == "html_render" and meta.amount is None and not review_needed:
+            try:
+                from app.services.claude_extract import extract_from_pdf
+                tmp_html_pdf = settings.storage_path / "tmp" / f"em-{em.id}-html.pdf"
+                tmp_html_pdf.parent.mkdir(parents=True, exist_ok=True)
+                tmp_html_pdf.write_bytes(chosen_pdf_bytes)
+                try:
+                    ext = await extract_from_pdf(tmp_html_pdf)
+                finally:
+                    try:
+                        tmp_html_pdf.unlink()
+                    except OSError:
+                        pass
+                if ext and ext.document_type != "__unavailable__":
+                    if ext.total_amount is not None:
+                        meta.amount = ext.total_amount
+                    if ext.currency:
+                        meta.currency = ext.currency
+                    if ext.document_date and not meta.date:
+                        from dateutil import parser as _dp
+                        try:
+                            meta.date = _dp.parse(ext.document_date)
+                        except Exception:
+                            pass
+                    if ext.invoice_number and not meta.invoice_number:
+                        meta.invoice_number = ext.invoice_number
+                    log_entry["claude_extract"] = {
+                        "amount": str(ext.total_amount) if ext.total_amount is not None else None,
+                        "currency": ext.currency,
+                    }
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "process_message.claude_extract.failed",
+                    email_message_id=em.id, error=str(e),
+                )
+
         # --- Brand routing -----------------------------------------------------
         # After we have both classification + the actual document text, check
         # whether the body identifies a known brand that belongs to a different
@@ -842,7 +886,10 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
         ))
 
         # Determine final fields
-        currency = meta.currency or (org.default_currency if org else "CHF")
+        # Only fall back to the org's home currency when an amount was actually
+        # extracted (a real invoice with no printed currency). If extraction came
+        # up empty, leave currency NULL rather than fabricating a wrong "CHF".
+        currency = meta.currency or (org.default_currency if (meta.amount is not None and org) else None)
         doc_date = meta.date or em.received_at or datetime.now(UTC)
 
         filename = build_filename(
@@ -971,7 +1018,10 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
         if not review_needed:
             connectors = (await db.scalars(
                 select(Connector).where(
-                    Connector.organization_id == em.organization_id,
+                    # Use the post-brand-route org (== receipt.organization_id),
+                    # not the mailbox's source org, so a routed receipt syncs to
+                    # ITS org's connectors (matches sync_receipt_all_connectors).
+                    Connector.organization_id == effective_org_id,
                     Connector.enabled.is_(True),
                 )
             )).all()

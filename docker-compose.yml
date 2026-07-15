@@ -74,6 +74,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Cap the worker so its local LLM (~2.5-3GB resident once loaded) can't make
+    # Belege the global-OOM victim on the shared VPS (co-tenant apps are capped).
+    mem_limit: 4g
+    mem_reservation: 2g
     <<: *default-env
     depends_on:
       db: {condition: service_healthy}
