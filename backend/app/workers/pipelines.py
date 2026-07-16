@@ -1019,12 +1019,16 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
         # never overwritten on reprocess.
         from app.db.models import PaymentMethod
         from app.services.payment_inference import extract_pdf_text, infer_payment_method
-        if receipt.payment_method in (None, PaymentMethod.unknown):
-            inferred_pm = infer_payment_method(extract_pdf_text(str(out_path)), filename)
-            if inferred_pm is not None:
-                receipt.payment_method = inferred_pm
-            elif provider_id:
-                receipt.payment_method = PaymentMethod.credit_card
+        try:
+            if receipt.payment_method in (None, PaymentMethod.unknown):
+                # extract_pdf_text expects a Path (uses .suffix) — pass out_path directly.
+                inferred_pm = infer_payment_method(extract_pdf_text(out_path), filename)
+                if inferred_pm is not None:
+                    receipt.payment_method = inferred_pm
+                elif provider_id:
+                    receipt.payment_method = PaymentMethod.credit_card
+        except Exception as e:  # noqa: BLE001 — payment inference must never fail the pipeline
+            logger.warning("process_message.payment_infer.failed", email_message_id=em.id, error=str(e))
 
         em.status = EmailMessageStatus.review_needed if review_needed else EmailMessageStatus.finished
         await db.commit()
