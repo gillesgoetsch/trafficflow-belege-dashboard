@@ -37,6 +37,7 @@ export default function Inbox() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
   const [zipBusy, setZipBusy] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
   const qc = useQueryClient();
 
   useEffect(() => { setPage(1); setSelectedIds(new Set()); }, [orgId, search, providerId, status, paymentMethod, brand, booked, dateFrom, dateTo]);
@@ -145,6 +146,36 @@ export default function Inbox() {
     });
   };
 
+  // Fetch every receipt id matching the current filters (paging through ALL
+  // pages, not just the visible one). Used by the header select-all + export.
+  const fetchAllFilteredIds = async (): Promise<number[]> => {
+    const allIds: number[] = [];
+    let p = 1;
+    while (true) {
+      const r: ReceiptList = await api("/receipts", { query: { ...queryParams, page: p, page_size: 200 } });
+      allIds.push(...r.items.map((x) => x.id));
+      if (allIds.length >= r.total || r.items.length === 0) break;
+      p += 1;
+      if (p > 100) break; // safety stop
+    }
+    return allIds;
+  };
+
+  // Header checkbox: select ALL receipts matching the current filter across all
+  // pages (so a bulk ZIP/export covers the whole set), or clear when full.
+  const toggleSelectAll = async () => {
+    const allSelected = total > 0 && selectedIds.size >= total;
+    if (allSelected) { setSelectedIds(new Set()); return; }
+    setSelectingAll(true);
+    try {
+      const ids = await fetchAllFilteredIds();
+      setSelectedIds(new Set(ids));
+      if (ids.length > items.length) toast({ title: `${ids.length} Belege ausgewählt (alle Seiten)` });
+    } finally {
+      setSelectingAll(false);
+    }
+  };
+
   const tokenHeader = () => ({ ...(localStorage.getItem("belege_token") ? { Authorization: `Bearer ${localStorage.getItem("belege_token")}` } : {}) });
 
   const downloadBlob = async (path: string, init: RequestInit, fallbackName: string) => {
@@ -212,16 +243,7 @@ export default function Inbox() {
   const exportZipAll = async () => {
     setZipBusy(true);
     try {
-      // Fetch all IDs matching current filters (page through if needed)
-      const allIds: number[] = [];
-      let p = 1;
-      while (true) {
-        const r: ReceiptList = await api("/receipts", { query: { ...queryParams, page: p, page_size: 200 } });
-        allIds.push(...r.items.map((x) => x.id));
-        if (allIds.length >= r.total) break;
-        p += 1;
-        if (p > 50) break; // safety stop
-      }
+      const allIds = await fetchAllFilteredIds();
       if (allIds.length === 0) { toast({ title: "Keine Belege zum Exportieren" }); return; }
       await downloadBlob("/receipts/bulk/zip", {
         method: "POST",
@@ -358,7 +380,18 @@ export default function Inbox() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-8"></TableHead>
+              <TableHead className="w-8">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 cursor-pointer accent-primary align-middle disabled:opacity-40"
+                  aria-label="Alle passenden Belege auswählen"
+                  title={selectedIds.size > 0 ? "Auswahl aufheben" : "Alle passenden Belege auswählen (über alle Seiten)"}
+                  disabled={selectingAll || total === 0}
+                  ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < total; }}
+                  checked={total > 0 && selectedIds.size >= total}
+                  onChange={toggleSelectAll}
+                />
+              </TableHead>
               <TableHead onClick={() => toggleSort("document_date")} className="cursor-pointer select-none whitespace-nowrap" title="Rechnungsdatum (vom Dokument selbst)">
                 Rechnungsdatum{sortIcon("document_date")}
               </TableHead>

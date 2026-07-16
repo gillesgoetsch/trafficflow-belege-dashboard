@@ -1010,6 +1010,22 @@ async def process_message(ctx, email_message_id: int, force: bool = False):
             )
             db.add(receipt)
 
+        # Payment method — the email pipeline previously never set this, so every
+        # email-ingested receipt stayed "unknown". Infer from the document text;
+        # if there is no explicit marker but the vendor is a known provider (our
+        # catalog vendors are card-billed SaaS/ads/hosting subscriptions), default
+        # to credit_card. Bank-transfer / Twint / PayPal are still detected from
+        # the text first. Only fills when currently unknown, so a manual value is
+        # never overwritten on reprocess.
+        from app.db.models import PaymentMethod
+        from app.services.payment_inference import extract_pdf_text, infer_payment_method
+        if receipt.payment_method in (None, PaymentMethod.unknown):
+            inferred_pm = infer_payment_method(extract_pdf_text(str(out_path)), filename)
+            if inferred_pm is not None:
+                receipt.payment_method = inferred_pm
+            elif provider_id:
+                receipt.payment_method = PaymentMethod.credit_card
+
         em.status = EmailMessageStatus.review_needed if review_needed else EmailMessageStatus.finished
         await db.commit()
         await db.refresh(receipt)
@@ -1120,6 +1136,10 @@ async def process_uploaded_receipt(ctx, receipt_id: int, engine: str = "auto"):
         ):
             r.payment_method = inferred_pm
             log_entry["inferred_payment_method"] = inferred_pm.value
+        elif r.payment_method == PaymentMethod.unknown and r.provider_id:
+            # No explicit marker but a known (card-billed) vendor → credit_card.
+            r.payment_method = PaymentMethod.credit_card
+            log_entry["inferred_payment_method"] = "credit_card (provider default)"
 
         # API unavailable (credits, auth, render failure) — do NOT touch existing
         # receipt data. Log and return so the row keeps its current values.
